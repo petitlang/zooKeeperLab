@@ -1,0 +1,205 @@
+syntax = "proto3";
+
+package zookeeper;
+
+option java_package = "fr.isep.proto";
+option java_multiple_files = true;
+option java_outer_classname = "ZooKeeperProto";
+
+// Client-facing API. A follower forwards Write/Guess to the leader.
+service GameService {
+  rpc Write(WriteRequest) returns (OperationResponse);
+  rpc Guess(GuessRequest) returns (OperationResponse);
+  rpc Read(ReadRequest) returns (GameState);
+}
+
+// Node-to-node API. All five nodes implement the same service.
+service CoordinationService {
+  // ACK is the RPC response, sent only after durable logging.
+  rpc Propose(ProposeRequest) returns (Ack);
+  rpc Commit(CommitRequest) returns (NodeResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (NodeResponse);
+  rpc Forward(ForwardRequest) returns (OperationResponse);
+
+  // Exchange candidates' latest tags; this does not implement Raft voting.
+  rpc Election(ElectionRequest) returns (ElectionResponse);
+  rpc AnnounceLeader(LeaderAnnouncement) returns (NodeResponse);
+
+  // Read logs, reconcile them, then synchronize the agreed log before writes.
+  rpc FetchLog(FetchLogRequest) returns (LogSnapshot);
+  rpc SyncLog(SyncLogRequest) returns (NodeResponse);
+}
+
+// Compare epoch first, then seq. Only equal tags are tied by lowest node ID.
+message ProposalTag {
+  int32 epoch = 1;
+  int32 seq = 2;
+}
+
+enum Operation {
+  OPERATION_UNSPECIFIED = 0;
+  WRITE = 1;
+  GUESS = 2;
+}
+
+enum LogStatus {
+  LOG_STATUS_UNSPECIFIED = 0;
+  PROPOSED = 1;
+  COMMITTED = 2;
+}
+
+enum NodeRole {
+  NODE_ROLE_UNSPECIFIED = 0;
+  FOLLOWER = 1;
+  CANDIDATE = 2;
+  LEADER = 3;
+}
+
+enum RequestStatus {
+  REQUEST_STATUS_UNSPECIFIED = 0;
+  // A guess was queued for its round; no new target is committed yet.
+  REQUEST_ACCEPTED = 1;
+  REQUEST_COMMITTED = 2;
+  REQUEST_REJECTED = 3;
+  // The caller cannot determine whether the operation committed.
+  REQUEST_UNCERTAIN = 4;
+}
+
+// Required log data: (epoch, seq), op, value, status.
+// GUESS entries record the winning value, not every queued guess.
+message LogEntry {
+  ProposalTag tag = 1;
+  Operation op = 2;
+  int32 value = 3;
+  LogStatus status = 4;
+  string client_id = 5;
+  string request_id = 6;
+  // The round that starts when this new target commits (initial target -> 1).
+  int64 round_id = 7;
+}
+
+message WriteRequest {
+  string client_id = 1;
+  // Reuse this ID when retrying the same operation.
+  string request_id = 2;
+  // Java must require presence and validate the range 0..100.
+  optional int32 value = 3;
+}
+
+message GuessRequest {
+  string client_id = 1;
+  string request_id = 2;
+  optional int32 value = 3;
+  // Read the current round first; reject guesses for an obsolete round.
+  int64 round_id = 4;
+}
+
+message ReadRequest {}
+
+message GameState {
+  // Absent until the first target is committed; zero is a valid target.
+  optional int32 target = 1;
+  // Zero before initialization, then increments with each committed target.
+  int64 round_id = 2;
+  ProposalTag last_committed = 3;
+  int32 node_id = 4;
+  // Absent if this node currently has no known leader.
+  optional int32 leader_id = 5;
+  NodeRole role = 6;
+  // False during election/recovery. target reflects committed data only.
+  bool ready = 7;
+}
+
+message OperationResponse {
+  RequestStatus status = 1;
+  string message = 2;
+  GameState state = 3;
+  string request_id = 4;
+  // Present only when reporting REQUEST_COMMITTED.
+  ProposalTag committed_tag = 5;
+}
+
+message ForwardRequest {
+  int32 from_node_id = 1;
+  // Preserve the original client identity, request ID and round.
+  oneof request {
+    WriteRequest write = 2;
+    GuessRequest guess = 3;
+  }
+}
+
+message ProposeRequest {
+  int32 leader_id = 1;
+  int32 leader_epoch = 2;
+  // The entry must have status PROPOSED; it is not yet visible as a target.
+  LogEntry entry = 3;
+}
+
+message Ack {
+  ProposalTag tag = 1;
+  int32 from_node_id = 2;
+  bool accepted = 3;
+  int32 current_epoch = 4;
+  string message = 5;
+}
+
+message CommitRequest {
+  int32 leader_id = 1;
+  // Authority of the sender, separate from the entry's original epoch.
+  int32 leader_epoch = 2;
+  ProposalTag tag = 3;
+}
+
+message HeartbeatRequest {
+  int32 leader_id = 1;
+  int32 leader_epoch = 2;
+  // Helps detect a lagging follower; heartbeat alone does not commit data.
+  ProposalTag last_committed = 3;
+}
+
+// accepted means this particular node handled the request, not quorum success.
+message NodeResponse {
+  int32 from_node_id = 1;
+  bool accepted = 2;
+  int32 current_epoch = 3;
+  string message = 4;
+}
+
+message ElectionRequest {
+  int32 from_node_id = 1;
+  int32 current_epoch = 2;
+  // Latest logged tag, including PROPOSED entries; absent for an empty log.
+  ProposalTag latest_tag = 3;
+}
+
+message ElectionResponse {
+  int32 from_node_id = 1;
+  int32 current_epoch = 2;
+  ProposalTag latest_tag = 3;
+}
+
+message LeaderAnnouncement {
+  int32 leader_id = 1;
+  int32 leader_epoch = 2;
+}
+
+message FetchLogRequest {
+  int32 from_node_id = 1;
+}
+
+message LogSnapshot {
+  int32 from_node_id = 1;
+  // Persist this separately: an elected epoch may have no proposals yet.
+  int32 current_epoch = 2;
+  // Ordered by (epoch, seq), including proposed and committed entries.
+  repeated LogEntry entries = 3;
+}
+
+message SyncLogRequest {
+  int32 leader_id = 1;
+  int32 leader_epoch = 2;
+  // Reconciled ordered log. The receiver must validate the sender and entries,
+  // preserve committed history, persist the result, and rebuild game state.
+  // The Java recovery algorithm decides how unresolved proposals are handled.
+  repeated LogEntry entries = 3;
+}
