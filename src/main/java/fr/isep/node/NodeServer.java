@@ -4,11 +4,13 @@ import fr.isep.coordination.CoordinationServiceImpl;
 import fr.isep.game.GameServiceImpl;
 import fr.isep.proto.CoordinationServiceGrpc;
 import fr.isep.proto.GameServiceGrpc;
+import fr.isep.proto.GameState;
+import fr.isep.proto.LogStatus;
+import fr.isep.storage.LogStore;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -16,18 +18,30 @@ import java.util.concurrent.TimeUnit;
 public final class NodeServer implements AutoCloseable {
     private final NodeConfig config;
     private final Server server;
+    private final LogStore logStore;
+    private final NodeState state;
 
-    public NodeServer(NodeConfig config) {
+    public NodeServer(NodeConfig config) throws IOException {
         this.config = Objects.requireNonNull(config, "config");
-        // Both APIs share one listening port, just as multiple Lab2 services can.
-        this.server = ServerBuilder.forPort(config.getPort())
-                .addService(new GameServiceImpl())
-                .addService(new CoordinationServiceImpl())
-                .build();
+        logStore = new LogStore(config.getLogFile());
+        try {
+            state = new NodeState(config, logStore);
+            // Both APIs share one listening port, just as multiple Lab2 services can.
+            server = ServerBuilder.forPort(config.getPort())
+                    .addService(new GameServiceImpl())
+                    .addService(new CoordinationServiceImpl())
+                    .build();
+        } catch (RuntimeException | Error e) {
+            try {
+                logStore.close();
+            } catch (IOException closeError) {
+                e.addSuppressed(closeError);
+            }
+            throw e;
+        }
     }
 
     public void start() throws IOException {
-        Files.createDirectories(config.getDataDirectory());
         server.start();
 
         String prefix = "[Node " + config.getNodeId() + "] ";
@@ -37,6 +51,13 @@ public final class NodeServer implements AutoCloseable {
         System.out.println(prefix + "Peers: " + config.getPeers());
         System.out.println(prefix + "Quorum: " + config.getQuorum() + "/" + NodeConfig.NODE_COUNT);
         System.out.println(prefix + "Data directory: " + config.getDataDirectory());
+        GameState restored = state.snapshot();
+        long pending = logStore.getEntries().stream()
+                .filter(entry -> entry.getStatus() == LogStatus.PROPOSED).count();
+        System.out.println(prefix + "Restored: epoch=" + state.getCurrentEpoch()
+                + " seq=" + state.getCurrentSeq()
+                + " target=" + (restored.hasTarget() ? restored.getTarget() : "unset")
+                + " round=" + restored.getRoundId() + " pending=" + pending);
         System.out.println(prefix + "Startup only: RPC handlers and leader election are not implemented yet.");
     }
 
@@ -56,6 +77,12 @@ public final class NodeServer implements AutoCloseable {
         } catch (InterruptedException e) {
             server.shutdownNow();
             Thread.currentThread().interrupt();
+        } finally {
+            try {
+                logStore.close();
+            } catch (IOException e) {
+                System.err.println("[Node " + config.getNodeId() + "] Log close failed: " + e.getMessage());
+            }
         }
     }
 

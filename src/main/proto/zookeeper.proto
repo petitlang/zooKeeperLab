@@ -74,6 +74,7 @@ message LogEntry {
   LogStatus status = 4;
   string client_id = 5;
   string request_id = 6;
+  // The round that starts when this new target commits (initial target -> 1).
   int64 round_id = 7;
 }
 
