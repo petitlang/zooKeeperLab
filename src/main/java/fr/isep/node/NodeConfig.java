@@ -17,12 +17,17 @@ public final class NodeConfig {
     private final int nodeId;
     private final List<NodeAddress> cluster;
     private final Path dataDirectory;
+    private final boolean bootstrapLeader;
 
     public NodeConfig(int nodeId) {
         this(nodeId, DEFAULT_BASE_PORT, Path.of("data"));
     }
 
     public NodeConfig(int nodeId, int basePort, Path dataRoot) {
+        this(nodeId, basePort, dataRoot, false);
+    }
+
+    private NodeConfig(int nodeId, int basePort, Path dataRoot, boolean bootstrapLeader) {
         if (nodeId < 1 || nodeId > NODE_COUNT) {
             throw new IllegalArgumentException("Node ID must be between 1 and 5.");
         }
@@ -31,6 +36,7 @@ public final class NodeConfig {
             throw new IllegalArgumentException("Base port must be between 0 and 65530.");
         }
         this.nodeId = nodeId;
+        this.bootstrapLeader = bootstrapLeader;
         this.dataDirectory = Objects.requireNonNull(dataRoot, "dataRoot")
                 .toAbsolutePath().normalize().resolve("node-" + nodeId);
 
@@ -46,7 +52,7 @@ public final class NodeConfig {
         Map<String, String> options = new HashMap<>();
         for (int i = 0; i < args.length; i += 2) {
             String name = args[i];
-            if (!List.of("--id", "--base-port", "--data-dir").contains(name)) {
+            if (!List.of("--id", "--base-port", "--data-dir", "--bootstrap-leader").contains(name)) {
                 throw new IllegalArgumentException("Unknown option: " + name);
             }
             if (i + 1 >= args.length || args[i + 1].startsWith("--")) {
@@ -63,10 +69,14 @@ public final class NodeConfig {
         if (dataRoot.isBlank()) {
             throw new IllegalArgumentException("Data directory cannot be blank.");
         }
+        String bootstrap = options.getOrDefault("--bootstrap-leader", "false");
+        if (!bootstrap.equals("true") && !bootstrap.equals("false")) {
+            throw new IllegalArgumentException("--bootstrap-leader must be true or false.");
+        }
         return new NodeConfig(
                 parseInt("--id", options.get("--id")),
                 parseInt("--base-port", options.getOrDefault("--base-port", "5000")),
-                Path.of(dataRoot));
+                Path.of(dataRoot), Boolean.parseBoolean(bootstrap));
     }
 
     private static int parseInt(String option, String value) {
@@ -79,6 +89,10 @@ public final class NodeConfig {
 
     public int getNodeId() {
         return nodeId;
+    }
+
+    public boolean isBootstrapLeader() {
+        return bootstrapLeader;
     }
 
     public int getPort() {

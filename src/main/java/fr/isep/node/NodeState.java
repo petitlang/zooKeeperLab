@@ -3,6 +3,7 @@ package fr.isep.node;
 import fr.isep.proto.GameState;
 import fr.isep.proto.LogEntry;
 import fr.isep.proto.LogStatus;
+import fr.isep.proto.LogSnapshot;
 import fr.isep.proto.NodeRole;
 import fr.isep.proto.Operation;
 import fr.isep.proto.ProposalTag;
@@ -176,5 +177,14 @@ public final class NodeState {
     /** Includes PROPOSED entries, as required for the lab election comparison. */
     public synchronized Optional<ProposalTag> getLatestTag() {
         return logStore.getLatestEntry().map(LogEntry::getTag);
+    }
+
+    public synchronized LogSnapshot logSnapshot() {
+        return LogSnapshot.newBuilder().setFromNodeId(nodeId).setCurrentEpoch(currentEpoch)
+                .addAllEntries(logStore.getEntries()).build();
+    }
+
+    public synchronized void pause() {
+        ready = false;
     }
 }
