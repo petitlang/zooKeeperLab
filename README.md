@@ -7,9 +7,15 @@ Java 17 and gRPC implementation of the Lab3 coordination system.
 Five independent localhost nodes can start and register both `GameService` and
 `CoordinationService` on their respective ports. `LogStore` now persists proposals,
 commit updates, and epochs; `NodeState` restores the committed target and manages
-thread-safe runtime state. The RPC handlers, election algorithm, replication, and
-game rules will be implemented in subsequent steps. Calling an existing RPC
-currently returns `UNIMPLEMENTED`.
+thread-safe runtime state. `GameService.Write/Read` and the coordination RPCs
+`Propose`, `Commit`, `Forward`, `AnnounceLeader`, and `FetchLog` are implemented.
+Writes replicate to a fixed quorum of 3, and followers forward writes to the
+known leader without logging until a proposal arrives.
+
+Automatic election, heartbeat monitoring, cross-epoch recovery/synchronization,
+guess collection, and the command-line client are still pending. Their RPCs
+currently return `UNIMPLEMENTED`. A temporary, explicit manual bootstrap lets
+the normal write flow be exercised on a fresh cluster.
 
 ## Compile
 
@@ -22,14 +28,16 @@ mvn compile
 
 ## Start five nodes
 
-Open five terminals in the project directory. Run one command in each terminal:
+Open five terminals in the project directory. For this development stage, start
+the four followers first, then Node 1 with manual bootstrap enabled. Run one
+command in each terminal:
 
 ```powershell
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 1"
 mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 2"
 mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 3"
 mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 4"
 mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 5"
+mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 1 --bootstrap-leader true"
 ```
 
 | Node | Address | Data directory |
@@ -57,6 +65,11 @@ election and replication implementation planned for later steps.
   must use the same base port; the valid range is 0 through 65530.
 - `--data-dir`: default `data`, resolved relative to the working directory.
   Each node gets a `node-<id>` subdirectory.
+- `--bootstrap-leader`: default `false`. Set `true` only on the designated
+  development leader. Bootstrap requires an epoch-zero empty local log, a fresh
+  majority, and no existing history on responding peers. Start followers first.
+  Existing logs must be retained for the future election/recovery implementation;
+  manual bootstrap does not recover a previously used cluster.
 - `--help`: print usage and exit.
 
 Example using ports 6001 through 6005 and another data root:
@@ -65,9 +78,52 @@ Example using ports 6001 through 6005 and another data root:
 mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 1 --base-port 6000 --data-dir local-data"
 ```
 
-For IntelliJ IDEA, run `fr.isep.node.NodeServer` with program arguments `--id 1`
-and the project directory as the working directory. Create five run
-configurations, changing the ID to 1 through 5.
+For IntelliJ IDEA, run `fr.isep.node.NodeServer` with the project directory as the
+working directory. Create five run configurations using `--id 2` through `--id 5`
+for followers and `--id 1 --bootstrap-leader true` for the leader. Enable multiple
+instances if using a single run configuration, and start followers first.
+
+## Normal write flow
+
+A Java gRPC client can call `GameService.Write` on any node with `client_id`, a
+nonempty `request_id`, and `value` in 0 through 100. The generated blocking stub
+can be used as follows after establishing a plaintext channel:
+
+```java
+WriteRequest request = WriteRequest.newBuilder()
+        .setClientId("client-a").setRequestId("write-001").setValue(50).build();
+OperationResponse result = GameServiceGrpc.newBlockingStub(channel)
+        .withDeadlineAfter(5, TimeUnit.SECONDS).write(request);
+GameState state = GameServiceGrpc.newBlockingStub(channel)
+        .withDeadlineAfter(2, TimeUnit.SECONDS).read(ReadRequest.getDefaultInstance());
+```
+
+The leader serializes writes and durably logs a proposal, counting itself as one
+acknowledgment. It contacts the four peers concurrently with a shared one-second
+deadline per phase. Each follower checks the sending leader and epoch, saves the
+proposal, then replies with its node ID and proposal tag. Only matching, accepted
+ACKs from distinct peers count. A higher observed epoch prevents the old leader
+from committing. At least two follower ACKs plus the local durable record are
+required to commit. The leader persists its COMMIT and broadcasts COMMIT to all
+four followers; followers persist it before exposing the target.
+
+Missing quorum leaves the proposal `PROPOSED`, returns `REQUEST_UNCERTAIN`, and
+keeps the visible target unchanged. Retry exactly the same client/request ID and
+value. Retries reuse the pending tag; committed retries do not start another
+round. A reused ID with changed data is rejected. New writes are blocked while
+another proposal remains unresolved, preserving commit order.
+
+Commit delivery has a deadline too. `REQUEST_COMMITTED` reports a durable leader
+decision after quorum ACKs, not simultaneous application on every follower. In
+this development stage, the next write replays the committed prefix to lagging
+followers before sending its current proposal. Read returns local committed
+state and can lag while a follower is unavailable or catching up. Same-epoch
+catch-up is implemented; leader-failure recovery remains a separate next step.
+
+Normal flow logs include `PROPOSE (epoch,seq)`, `ACK nodes=[...] quorum=3`, and
+`COMMIT (epoch,seq)`. The integration tests exercise client writes through
+followers, partial outages, pending-request retry, late follower catch-up,
+mismatched ACKs, higher epochs, and concurrent writes.
 
 ## Persistent log and runtime state
 
@@ -99,9 +155,9 @@ snapshot is used to read the target, round, role, and readiness together.
 reserves the next round number, but the visible round advances only on commit.
 
 New leader epochs are persisted before use and reset the sequence to zero. Leader
-selection and resolution of pending proposals still require the future election
-and synchronization algorithm; these storage/state methods do not establish
-quorum on their own.
+selection and cross-epoch resolution of pending proposals still require the
+future election and synchronization algorithm. The coordinator now establishes
+quorum for normal writes; storage/state methods alone do not establish quorum.
 
 Run the recovery and concurrency tests:
 

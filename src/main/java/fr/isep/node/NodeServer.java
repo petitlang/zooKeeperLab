@@ -1,6 +1,7 @@
 package fr.isep.node;
 
 import fr.isep.coordination.CoordinationServiceImpl;
+import fr.isep.coordination.LeaderCoordinator;
 import fr.isep.game.GameServiceImpl;
 import fr.isep.proto.CoordinationServiceGrpc;
 import fr.isep.proto.GameServiceGrpc;
@@ -20,18 +21,25 @@ public final class NodeServer implements AutoCloseable {
     private final Server server;
     private final LogStore logStore;
     private final NodeState state;
+    private final LeaderCoordinator coordinator;
 
     public NodeServer(NodeConfig config) throws IOException {
         this.config = Objects.requireNonNull(config, "config");
         logStore = new LogStore(config.getLogFile());
+        LeaderCoordinator createdCoordinator = null;
         try {
             state = new NodeState(config, logStore);
+            createdCoordinator = new LeaderCoordinator(config, state);
+            coordinator = createdCoordinator;
             // Both APIs share one listening port, just as multiple Lab2 services can.
             server = ServerBuilder.forPort(config.getPort())
-                    .addService(new GameServiceImpl())
-                    .addService(new CoordinationServiceImpl())
+                    .addService(new GameServiceImpl(state, coordinator))
+                    .addService(new CoordinationServiceImpl(state, coordinator))
                     .build();
         } catch (RuntimeException | Error e) {
+            if (createdCoordinator != null) {
+                createdCoordinator.close();
+            }
             try {
                 logStore.close();
             } catch (IOException closeError) {
@@ -58,7 +66,15 @@ public final class NodeServer implements AutoCloseable {
                 + " seq=" + state.getCurrentSeq()
                 + " target=" + (restored.hasTarget() ? restored.getTarget() : "unset")
                 + " round=" + restored.getRoundId() + " pending=" + pending);
-        System.out.println(prefix + "Startup only: RPC handlers and leader election are not implemented yet.");
+        System.out.println(prefix + "Write/Read and replication RPCs registered; automatic election comes later.");
+        if (config.isBootstrapLeader()) {
+            bootstrapLeader();
+        }
+    }
+
+    /** Explicit development bootstrap; requires fresh logs and a live majority. */
+    public void bootstrapLeader() throws IOException {
+        coordinator.bootstrapLeader();
     }
 
     public void awaitTermination() throws InterruptedException {
@@ -78,6 +94,7 @@ public final class NodeServer implements AutoCloseable {
             server.shutdownNow();
             Thread.currentThread().interrupt();
         } finally {
+            coordinator.close();
             try {
                 logStore.close();
             } catch (IOException e) {
@@ -120,8 +137,10 @@ public final class NodeServer implements AutoCloseable {
     }
 
     private static void printUsage() {
-        System.out.println("Usage: NodeServer --id <1..5> [--base-port <5000>] [--data-dir <data>]");
+        System.out.println("Usage: NodeServer --id <1..5> [--base-port <5000>] [--data-dir <data>]"
+                + " [--bootstrap-leader <true|false>]");
         System.out.println("Port = base port + node ID. Use the same base port for all five nodes.");
         System.out.println("Each node stores data in <data-dir>/node-<id>.");
+        System.out.println("Manual leader bootstrap is for fresh-cluster development only; start followers first.");
     }
 }
