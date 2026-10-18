@@ -4,6 +4,7 @@ import fr.isep.proto.LogEntry;
 import fr.isep.proto.LogStatus;
 import fr.isep.proto.Operation;
 import fr.isep.proto.ProposalTag;
+import fr.isep.proto.LogSnapshot;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -106,6 +107,59 @@ public final class LogStore implements AutoCloseable {
     public synchronized int getCurrentEpoch() {
         ensureOpen();
         return currentEpoch;
+    }
+
+    /** Check a complete history before any disk or in-memory mutation. */
+    public static void validateSnapshot(List<LogEntry> history, int epoch) {
+        LogEntry previous = null;
+        boolean pending = false;
+        java.util.Set<String> requests = new java.util.HashSet<>();
+        for (LogEntry entry : history) {
+            validateEntry(entry);
+            ProposalTag tag = entry.getTag();
+            int expectedSeq = previous != null && previous.getTag().getEpoch() == tag.getEpoch()
+                    ? Math.addExact(previous.getTag().getSeq(), 1) : 1;
+            long expectedRound = previous == null ? 1 : Math.addExact(previous.getRoundId(), 1);
+            if (tag.getEpoch() > epoch || tag.getSeq() != expectedSeq || entry.getRoundId() != expectedRound
+                    || (previous != null && TAG_ORDER.compare(previous.getTag(), tag) >= 0)
+                    || (pending && entry.getStatus() == LogStatus.COMMITTED)
+                    || !requests.add(encodeId(entry.getClientId()) + ":" + encodeId(entry.getRequestId()))) {
+                throw new IllegalArgumentException("Invalid or conflicting snapshot history.");
+            }
+            pending |= entry.getStatus() == LogStatus.PROPOSED;
+            previous = entry;
+        }
+        if (epoch < 0) throw new IllegalArgumentException("Invalid epoch.");
+    }
+
+    /** Append one durable checkpoint. A torn final checkpoint is ignored on replay. */
+    public synchronized void installSnapshot(List<LogEntry> history, int epoch) throws IOException {
+        ensureOpen();
+        validateReplacement(history, epoch);
+        LogSnapshot snapshot = LogSnapshot.newBuilder().setCurrentEpoch(epoch).addAllEntries(history).build();
+        persist("SNAPSHOT\t" + Base64.getEncoder().encodeToString(snapshot.toByteArray()) + "\n");
+        applySnapshot(history, epoch);
+    }
+
+    private void validateReplacement(List<LogEntry> history, int epoch) {
+        validateSnapshot(history, epoch);
+        if (epoch < currentEpoch) throw new IllegalArgumentException("Snapshot epoch regresses.");
+        java.util.Map<ProposalTag, LogEntry> incoming = new java.util.HashMap<>();
+        history.forEach(entry -> incoming.put(entry.getTag(), entry));
+        for (LogEntry existing : entries.values()) {
+            LogEntry replacement = incoming.get(existing.getTag());
+            if (replacement != null) requireSameProposal(existing, replacement);
+            if (existing.getStatus() == LogStatus.COMMITTED
+                    && (replacement == null || replacement.getStatus() != LogStatus.COMMITTED)) {
+                throw new IllegalArgumentException("Snapshot cannot remove or downgrade a commit.");
+            }
+        }
+    }
+
+    private void applySnapshot(List<LogEntry> history, int epoch) {
+        entries.clear();
+        history.forEach(entry -> entries.put(entry.getTag(), entry));
+        currentEpoch = epoch;
     }
 
     public synchronized List<LogEntry> getEntries() {
@@ -228,6 +282,16 @@ public final class LogStore implements AutoCloseable {
 
     private void replayLine(String line) {
         String[] fields = line.split("\t", -1);
+        if (fields.length == 2 && "SNAPSHOT".equals(fields[0])) {
+            try {
+                LogSnapshot snapshot = LogSnapshot.parseFrom(Base64.getDecoder().decode(fields[1]));
+                validateReplacement(snapshot.getEntriesList(), snapshot.getCurrentEpoch());
+                applySnapshot(snapshot.getEntriesList(), snapshot.getCurrentEpoch());
+                return;
+            } catch (com.google.protobuf.InvalidProtocolBufferException error) {
+                throw new IllegalArgumentException("Corrupt checkpoint.", error);
+            }
+        }
         if (fields.length == 2 && "EPOCH".equals(fields[0])) {
             int epoch = Integer.parseInt(fields[1]);
             if (epoch < currentEpoch) {

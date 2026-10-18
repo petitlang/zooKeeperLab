@@ -1,0 +1,4 @@
+Picked up JAVA_TOOL_OPTIONS: -Djdk.net.unixdomain.tmpdir=D:\zooKeeperLab\target\nonexistent-selector-dir
+[Node 1] Started port=23001 quorum=3/5 log=C:\Users\Yuefan\AppData\Local\Temp\junit-5378190184625402287\node-1\entries.log
+[Node 1] ACK (2,2)
+[Node 1] COMMIT (2,2)

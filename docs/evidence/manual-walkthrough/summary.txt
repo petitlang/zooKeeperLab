@@ -1,0 +1,15 @@
+START five JVMs elected a ready leader
+WRITE 50; GUESS B=30 waits at 1/2; identical retry keeps 1/2; duplicate client rejected; C=62 commits target=62 round=2
+TIE target=50; B=40 before C=60 -> target=40
+BOUNDARIES write 0; guesses 0,100 -> target=0; write 101 rejected locally
+STOP node=1
+CRASH leader=1 -> leader=2; failed-node client reconnects; write 40 and guesses 39,80 -> target=39
+REJOIN original node=1 catches up to target=39 using original log
+STOP node=3
+STOP node=4
+STOP node=5
+QUORUM 2/5: write 100 uncertain and target remains 39; restore 3/5 then retry SAME ID -> committed target=100
+ALL five nodes ready and target=100 after restart/catch-up
+POWERSHELL run-client.ps1 verified: read target=100
+QUIT all interactive clients exited normally
+All processes launched by this walkthrough have been stopped.

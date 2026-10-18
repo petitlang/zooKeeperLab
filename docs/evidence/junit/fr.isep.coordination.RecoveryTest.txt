@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: fr.isep.coordination.RecoveryTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in fr.isep.coordination.RecoveryTest

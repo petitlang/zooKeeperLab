@@ -108,6 +108,9 @@ message GameState {
   NodeRole role = 6;
   // False during election/recovery. target reflects committed data only.
   bool ready = 7;
+  int32 required_guesses = 8;
+  int32 received_guesses = 9;
+  bool settling = 10;
 }
 
 message OperationResponse {
@@ -193,6 +196,7 @@ message LogSnapshot {
   int32 current_epoch = 2;
   // Ordered by (epoch, seq), including proposed and committed entries.
   repeated LogEntry entries = 3;
+  bool ready = 4;
 }
 
 message SyncLogRequest {

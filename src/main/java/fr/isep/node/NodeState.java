@@ -45,10 +45,14 @@ public final class NodeState {
 
     /** Call only after winning the lab's election and reconciling the logs. */
     public synchronized void becomeLeader() throws IOException {
+        becomeLeader(Math.addExact(currentEpoch, 1));
+    }
+
+    public synchronized void becomeLeader(int newEpoch) throws IOException {
         if (role != NodeRole.CANDIDATE) {
             throw new IllegalStateException("Only an election candidate can become leader.");
         }
-        int newEpoch = Math.addExact(currentEpoch, 1);
+        if (newEpoch <= currentEpoch) throw new IllegalArgumentException("Leader epoch must increase.");
         logStore.recordEpoch(newEpoch);
         currentEpoch = newEpoch;
         currentSeq = 0;
@@ -181,7 +185,25 @@ public final class NodeState {
 
     public synchronized LogSnapshot logSnapshot() {
         return LogSnapshot.newBuilder().setFromNodeId(nodeId).setCurrentEpoch(currentEpoch)
-                .addAllEntries(logStore.getEntries()).build();
+                .addAllEntries(logStore.getEntries()).setReady(ready).build();
+    }
+
+    public synchronized Optional<LogEntry> findRequest(String client, String request) {
+        return logStore.getEntries().stream().filter(entry -> entry.getClientId().equals(client)
+                && entry.getRequestId().equals(request)).findFirst();
+    }
+
+    /** Recovery-only entrypoint: old tags are allowed, authority is the current epoch. */
+    public synchronized void installRecoveredLog(int leader, int epoch, java.util.List<LogEntry> history)
+            throws IOException {
+        if (currentEpoch != epoch || leaderId == null || leaderId != leader || role == NodeRole.CANDIDATE) {
+            throw new IllegalStateException("Recovery sender is not the established leader.");
+        }
+        logStore.installSnapshot(history, epoch);
+        currentSeq = logStore.getLatestEntry().filter(entry -> entry.getTag().getEpoch() == epoch)
+                .map(entry -> entry.getTag().getSeq()).orElse(0);
+        restoreCommittedState();
+        ready = false;
     }
 
     public synchronized void pause() {

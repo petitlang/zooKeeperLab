@@ -1,189 +1,180 @@
 # ZooKeeper-like lab
 
-Java 17 and gRPC implementation of the Lab3 coordination system.
+Java 17, Maven, gRPC and Protocol Buffers. Five independent localhost processes,
+one elected leader, four followers and a fixed quorum of **3/5**.
 
-## Current stage
+## Build and run
 
-Five independent localhost nodes can start and register both `GameService` and
-`CoordinationService` on their respective ports. `LogStore` now persists proposals,
-commit updates, and epochs; `NodeState` restores the committed target and manages
-thread-safe runtime state. `GameService.Write/Read` and the coordination RPCs
-`Propose`, `Commit`, `Forward`, `AnnounceLeader`, and `FetchLog` are implemented.
-Writes replicate to a fixed quorum of 3, and followers forward writes to the
-known leader without logging until a proposal arrives.
-
-Automatic election, heartbeat monitoring, cross-epoch recovery/synchronization,
-guess collection, and the command-line client are still pending. Their RPCs
-currently return `UNIMPLEMENTED`. A temporary, explicit manual bootstrap lets
-the normal write flow be exercised on a fresh cluster.
-
-## Compile
-
-Run commands from `D:\ZooKeeper\ZooKeeper` with JDK 17 or later and Maven:
+In PowerShell, with Java 17+ installed:
 
 ```powershell
-Set-Location 'D:\ZooKeeper\ZooKeeper'
-mvn compile
+Set-Location 'D:\zooKeeperLab'
+./scripts/build.ps1
 ```
 
-## Start five nodes
+The scripts find Maven on PATH or inside IntelliJ IDEA. If execution policy blocks
+local scripts, use `Set-ExecutionPolicy -Scope Process Bypass` in this terminal.
+The Windows JDK selector workaround is applied only to launched Java/Maven
+processes. Its `target/nonexistent-selector-dir` directory must stay nonexistent.
 
-Open five terminals in the project directory. For this development stage, start
-the four followers first, then Node 1 with manual bootstrap enabled. Run one
-command in each terminal:
+Open five terminals in the project, one command per terminal:
 
 ```powershell
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 2"
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 3"
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 4"
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 5"
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 1 --bootstrap-leader true"
+./scripts/run-node.ps1 -Id 1
+./scripts/run-node.ps1 -Id 2
+./scripts/run-node.ps1 -Id 3
+./scripts/run-node.ps1 -Id 4
+./scripts/run-node.ps1 -Id 5
 ```
 
-| Node | Address | Data directory |
-| --- | --- | --- |
-| 1 | 127.0.0.1:5001 | data/node-1 |
-| 2 | 127.0.0.1:5002 | data/node-2 |
-| 3 | 127.0.0.1:5003 | data/node-3 |
-| 4 | 127.0.0.1:5004 | data/node-4 |
-| 5 | 127.0.0.1:5005 | data/node-5 |
+Ports are 5001–5005; logs are `data/node-<id>/entries.log`. Startup order is free.
+Wait for `LEADER ready` and confirm `ready=true` using a client. On fresh logs,
+equal tags favor node 1; with existing logs the result depends on history.
+Use the same `-BasePort 6000` on all node/client scripts to change ports, or
+`-DataDir demo-data` on all nodes to isolate a new demonstration.
+**Retain the same data directory when restarting a crashed node.**
 
-Both services share each node's port. Each node knows all five configured
-addresses and excludes itself from its four peers. The quorum is fixed at 3.
-Each node opens its own `entries.log` on startup and restores its state. A restarted
-node starts as a follower with no known leader and `ready=false`; persisted data
-does not restore authority to act as leader.
+Without scripts, use `mvn compile`, then
+`mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 1"`.
+In IntelliJ, import `pom.xml` and run `fr.isep.node.NodeServer` five times with
+`--id 1` through `--id 5`, with this project as working directory.
+The optional `--bootstrap-leader true` remains a fresh-log development tool;
+normal demonstrations use automatic election and do not need this option.
 
-Use Ctrl+C to stop a node. Orderly JVM shutdown runs the server shutdown hook;
-forced process termination may bypass it. Leader-crash recovery requires the
-election and replication implementation planned for later steps.
+## Clients and three demonstrations
 
-## Startup options
-
-- `--id`: required node ID from 1 to 5.
-- `--base-port`: default 5000. Listening port is base port + node ID. All nodes
-  must use the same base port; the valid range is 0 through 65530.
-- `--data-dir`: default `data`, resolved relative to the working directory.
-  Each node gets a `node-<id>` subdirectory.
-- `--bootstrap-leader`: default `false`. Set `true` only on the designated
-  development leader. Bootstrap requires an epoch-zero empty local log, a fresh
-  majority, and no existing history on responding peers. Start followers first.
-  Existing logs must be retained for the future election/recovery implementation;
-  manual bootstrap does not recover a previously used cluster.
-- `--help`: print usage and exit.
-
-Example using ports 6001 through 6005 and another data root:
+Open three clients in separate terminals:
 
 ```powershell
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 1 --base-port 6000 --data-dir local-data"
+./scripts/run-client.ps1 -Node 4 -Client A
+./scripts/run-client.ps1 -Node 3 -Client B
+./scripts/run-client.ps1 -Node 5 -Client C
 ```
 
-For IntelliJ IDEA, run `fr.isep.node.NodeServer` with the project directory as the
-working directory. Create five run configurations using `--id 2` through `--id 5`
-for followers and `--id 1 --bootstrap-leader true` for the leader. Enable multiple
-instances if using a single run configuration, and start followers first.
+Commands: `write N`, `guess N`, `read`, `retry`, `connect NODE`, `help`, `quit`.
+Client IDs must be distinct. Each new write/guess gets a UUID; `retry` preserves
+the exact ID, value and original guess round. A new command replaces the retained
+request. No automatic write retry or node switching is performed.
 
-## Normal write flow
+1. **Write:** A enters `write 50`, then `read`. A follower forwards without
+   logging the client request. Leader output shows PROPOSE, ACK and COMMIT.
+   The leader counts its own durable record plus at least two distinct follower
+   ACKs. Target/round change only after durable COMMIT.
+2. **Guess:** B enters `guess 30`: response is ACCEPTED, progress 1/2 and target
+   stays 50. C enters `guess 62`: the second distinct client triggers settlement.
+   Distances are 20 and 12, so 62 is committed as the new target and a new round
+   starts. There is **no time window**. One guess per client per round; ties favor
+   arrival order at the leader. Successful `write` invalidates old-round guesses.
+3. **Leader crash:** read `leader=...`, then kill that node's Java process or
+   stop its terminal. Wait for another `LEADER ready` (typically several seconds;
+   check readiness rather than relying on a fixed sleep). A living follower can
+   continue `write` and `guess`. A client attached to the killed node uses
+   `connect NODE` to select a living node. Restart the original node with the
+   same ID and data directory; it catches up without needing another write.
 
-A Java gRPC client can call `GameService.Write` on any node with `client_id`, a
-nonempty `request_id`, and `value` in 0 through 100. The generated blocking stub
-can be used as follows after establishing a plaintext channel:
-
-```java
-WriteRequest request = WriteRequest.newBuilder()
-        .setClientId("client-a").setRequestId("write-001").setValue(50).build();
-OperationResponse result = GameServiceGrpc.newBlockingStub(channel)
-        .withDeadlineAfter(5, TimeUnit.SECONDS).write(request);
-GameState state = GameServiceGrpc.newBlockingStub(channel)
-        .withDeadlineAfter(2, TimeUnit.SECONDS).read(ReadRequest.getDefaultInstance());
-```
-
-The leader serializes writes and durably logs a proposal, counting itself as one
-acknowledgment. It contacts the four peers concurrently with a shared one-second
-deadline per phase. Each follower checks the sending leader and epoch, saves the
-proposal, then replies with its node ID and proposal tag. Only matching, accepted
-ACKs from distinct peers count. A higher observed epoch prevents the old leader
-from committing. At least two follower ACKs plus the local durable record are
-required to commit. The leader persists its COMMIT and broadcasts COMMIT to all
-four followers; followers persist it before exposing the target.
-
-Missing quorum leaves the proposal `PROPOSED`, returns `REQUEST_UNCERTAIN`, and
-keeps the visible target unchanged. Retry exactly the same client/request ID and
-value. Retries reuse the pending tag; committed retries do not start another
-round. A reused ID with changed data is rejected. New writes are blocked while
-another proposal remains unresolved, preserving commit order.
-
-Commit delivery has a deadline too. `REQUEST_COMMITTED` reports a durable leader
-decision after quorum ACKs, not simultaneous application on every follower. In
-this development stage, the next write replays the committed prefix to lagging
-followers before sending its current proposal. Read returns local committed
-state and can lag while a follower is unavailable or catching up. Same-epoch
-catch-up is implemented; leader-failure recovery remains a separate next step.
-
-Normal flow logs include `PROPOSE (epoch,seq)`, `ACK nodes=[...] quorum=3`, and
-`COMMIT (epoch,seq)`. The integration tests exercise client writes through
-followers, partial outages, pending-request retry, late follower catch-up,
-mismatched ACKs, higher epochs, and concurrent writes.
-
-## Persistent log and runtime state
-
-The log is an append-only UTF-8 journal with tab-separated fields:
-
-```text
-EPOCH <current epoch>
-ENTRY <epoch> <seq> <op> <value> <status> <client ID> <request ID> <resulting round>
-```
-
-The example uses spaces for readability; actual separators are tabs. Client and
-request IDs are UTF-8 strings encoded with URL-safe Base64, so embedded tabs or
-newlines cannot break a record. A commit appends the same entry with `COMMITTED`
-status. Replay combines these records into one logical entry per tag.
-
-Every mutation calls `FileChannel.force(true)` before returning. Duplicate tags
-with identical proposal data and repeated commits are idempotent; conflicting
-data, gaps, and commits ahead of earlier proposals are rejected. An incomplete
-last line is truncated on restart. A malformed complete record fails startup
-instead of silently dropping history. An exclusive file lock prevents two
-instances from writing the same log.
-
-`NodeState` changes its visible target only after a durable commit. Its synchronized
-methods serialize proposal allocation and state changes. An immutable `GameState`
-snapshot is used to read the target, round, role, and readiness together.
-
-`LogEntry.round_id` identifies the round that starts when that entry commits;
-`GuessRequest.round_id` identifies the existing round being guessed. A proposal
-reserves the next round number, but the visible round advances only on commit.
-
-New leader epochs are persisted before use and reset the sequence to zero. Leader
-selection and cross-epoch resolution of pending proposals still require the
-future election and synchronization algorithm. The coordinator now establishes
-quorum for normal writes; storage/state methods alone do not establish quorum.
-
-Run the recovery and concurrency tests:
+Noninteractive inspection:
 
 ```powershell
-mvn test
+1..5 | ForEach-Object { ./scripts/run-client.ps1 -Node $_ -Client inspect -Command 'read' }
 ```
 
-## Windows selector compatibility
+Read is local and may be stale; it reports node, leader, role, ready, target,
+round and last committed tag. Guess progress is maintained by the leader:
+forwarded Guess responses show the leader's progress; follower local Read does
+not reconstruct the leader's volatile collection.
 
-In the current automated execution environment, both installed JDKs failed
-while initializing a Unix-domain socket used internally by the Windows NIO
-selector (`Unable to establish loopback connection`, caused by
-`Invalid argument: connect`). Five-node startup was verified with JDK 17 by
-making the Unix-domain temporary directory unavailable, which causes the JDK
-to fall back to TCP for this internal connection.
+## Encapsulation and concurrency
 
-If the same error occurs, set the following only in the affected terminal before
-running Maven. The indicated subdirectory must remain nonexistent:
+| Component | Responsibility |
+| --- | --- |
+| NodeServer / NodeRuntime | Process entrypoint / composition and lifecycle |
+| NodeConfig | Immutable addresses, quorum, timeouts, required guesses=2 |
+| PeerTransport | Reused channels, bounded concurrent peer RPCs, forwarding |
+| GameServiceImpl / CoordinationServiceImpl | Thin client / inter-node RPC adapters |
+| GameEngine | Admission, per-client guesses, round validation, winner selection |
+| LeaderCoordinator | Serialized proposal allocation, quorum replication, commit |
+| ElectionManager | Heartbeat and monotonic failure timeout |
+| RecoveryManager | Candidate comparison, reconciliation, synchronization, catch-up |
+| NodeState | Atomic role/epoch/sequence/committed-state transitions |
+| LogStore | Durable records, validation, checkpoints, replay and file locking |
+| ClientApp | Explicit commands, retained request and connection lifecycle |
+
+Only NodeRuntime owns long-lived server, worker, channel and log resources.
+Shutdown is idempotent; partial startup failures release resources. Collections
+are private and snapshots immutable. Writes and recovery share the coordinator's
+operation monitor. State and guess locks are never held while waiting for network
+calls. A settlement checks its captured epoch/round again inside the coordinator.
+
+Peer phases have a shared one-second deadline and run concurrently. Forwarding
+has a five-second deadline; the client uses six seconds. Heartbeats run every
+500 ms between completed maintenance ticks. Failure detection uses monotonic
+elapsed time, a 2500 ms timeout and a 350 ms × node-ID election stagger.
+Unavailable peers and catch-up can lengthen the interval between heartbeats.
+
+## Election and recovery
+
+Candidates exchange latest tags, including PROPOSED entries, and fetch logs.
+The greatest `(epoch, seq)` wins; equal tags favor the smallest node ID. At least
+three responses are required. The winner checks compatible prefix histories and
+merges observed commit knowledge. Conflicting histories stop recovery with a
+clear error instead of silently choosing a value.
+
+The next epoch exceeds all observed/current epochs and is persisted before use.
+The elected node stays unready while its selected history is durably synchronized
+to a majority. Retained pending proposals keep their original tags, are copied to
+a majority again, then committed in order. New proposals in the new epoch start
+at seq=1. Recovery/catch-up checkpoints may contain old tags; normal PROPOSE
+handlers still require the current epoch. Periodic maintenance repairs restarted
+or lagging followers. A snapshot cannot delete or downgrade a local commit.
+
+`REQUEST_COMMITTED` means a durable decision after majority replication; followers
+need not apply it simultaneously. `REQUEST_ACCEPTED` means a guess was collected,
+not committed. `REQUEST_UNCERTAIN` means read/retry is needed; a pending proposal
+can become committed during recovery. Retry the same ID and data. Changing data
+under an existing ID is rejected. A pending write blocks later writes.
+
+Queued guesses that have not produced a durable proposal are volatile and may be
+lost with the leader. Read the recovered round, then resubmit. A local-only
+proposal that never reached a majority may be discarded when another history
+is selected. Committed history must always be preserved.
+
+## Persistence
+
+UTF-8 append-only records: `EPOCH`, `ENTRY` and `SNAPSHOT`. Existing EPOCH/ENTRY
+journals remain readable. Entries contain epoch, seq, WRITE/GUESS, value,
+PROPOSED/COMMITTED, client ID, request ID and resulting round. IDs are URL-safe
+Base64; SNAPSHOT stores a complete Protobuf checkpoint as Base64.
+
+A checkpoint is validated and fully written with `FileChannel.force(true)` before
+changing memory or acknowledging it. An unfinished final record is truncated on
+restart; a corrupt complete record fails startup. An exclusive file lock prevents
+two writers. Restart restores data, never previous leader authority.
+
+## Tests and evidence
 
 ```powershell
-$env:JAVA_TOOL_OPTIONS = '-Djdk.net.unixdomain.tmpdir=D:\ZooKeeper\ZooKeeper\target\unused-unix-socket-directory'
+./scripts/test.ps1
 ```
 
-This does not change the application's gRPC TCP protocol. To clear this temporary
-setting, close the terminal or run:
+Unit/integration tests cover storage, checkpoints, state, duplicate requests,
+quorum loss/retry, ACK validation, simultaneous writes, game rules and lifecycle.
+Legacy replication tests explicitly disable background election to exercise their
+manual-bootstrap protocol scenarios without concurrent recovery.
 
-```powershell
-Remove-Item Env:JAVA_TOOL_OPTIONS
-```
+`ClusterProcessTest` launches five independent JVMs, uses forced process termination,
+and covers all three demonstrations, old-node rejoin and absent-quorum retry.
+A test-only leader driver also pauses production components at three deterministic
+boundaries: local PROPOSED only, proposal durable on 3/5 before COMMIT, and COMMIT
+stored on leader plus one follower. The parent forcibly kills it, then checks
+re-election and continuation. There are no production crash-injection switches.
+Tests use temporary data and reserved port ranges, separate from demonstration logs.
+
+JUnit results: `target/surefire-reports/`. Live process traces and scenario evidence:
+`target/demo-evidence/run-*/`. Retained evidence and the report are under `docs/`.
+
+## Model limits
+
+This is the lab's simplified fixed-five-node protocol on a stable localhost
+network, tested for process stop/restart. It is not complete ZAB or Raft and does
+not promise consensus under arbitrary partitions, arbitrary delays, Byzantine
+nodes or membership changes. A majority is always 3/5, even after nodes stop.

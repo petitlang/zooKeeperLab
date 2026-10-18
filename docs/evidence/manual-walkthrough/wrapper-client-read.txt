@@ -1,0 +1,2 @@
+Connected node=1 client=wrapper-check
+node=1 leader=unknown role=FOLLOWER ready=false target=unset round=0 last=0:0 guesses=0/2 settling=false

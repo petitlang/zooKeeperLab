@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: fr.isep.ClusterProcessTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 51.01 s -- in fr.isep.ClusterProcessTest

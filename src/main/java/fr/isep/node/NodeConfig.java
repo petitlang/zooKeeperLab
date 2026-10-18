@@ -119,6 +119,8 @@ public final class NodeConfig {
         return dataDirectory.resolve("entries.log");
     }
 
+    public int getRequiredGuesses() { return 2; }
+
     public Duration getRpcTimeout() {
         return Duration.ofSeconds(1);
     }

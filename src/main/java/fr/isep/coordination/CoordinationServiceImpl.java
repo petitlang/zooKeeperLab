@@ -1,6 +1,7 @@
 package fr.isep.coordination;
 
 import fr.isep.node.NodeConfig;
+import fr.isep.game.GameEngine;
 import fr.isep.node.NodeState;
 import fr.isep.proto.*;
 import io.grpc.Status;
@@ -13,11 +14,13 @@ import java.util.Objects;
 public final class CoordinationServiceImpl
         extends CoordinationServiceGrpc.CoordinationServiceImplBase {
     private final NodeState state;
-    private final LeaderCoordinator coordinator;
+    private final GameEngine game;
+    private final ElectionManager election;
 
-    public CoordinationServiceImpl(NodeState state, LeaderCoordinator coordinator) {
+    public CoordinationServiceImpl(NodeState state, GameEngine game, ElectionManager election) {
         this.state = Objects.requireNonNull(state, "state");
-        this.coordinator = Objects.requireNonNull(coordinator, "coordinator");
+        this.game = Objects.requireNonNull(game);
+        this.election = Objects.requireNonNull(election);
     }
 
     @Override
@@ -73,7 +76,7 @@ public final class CoordinationServiceImpl
         try {
             synchronized (state) {
                 state.followLeader(request.getLeaderId(), request.getLeaderEpoch());
-                resumeIfResolved();
+                election.leaderContact();
             }
             respond(observer, true, "Leader recorded; pending log records still require synchronization.");
         } catch (IllegalArgumentException | IllegalStateException e) {
@@ -100,9 +103,9 @@ public final class CoordinationServiceImpl
 
     @Override
     public void forward(ForwardRequest request, StreamObserver<OperationResponse> observer) {
-        if (!clusterId(request.getFromNodeId()) || !request.hasWrite()) {
+        if (!clusterId(request.getFromNodeId()) || (!request.hasWrite() && !request.hasGuess())) {
             observer.onError(Status.INVALID_ARGUMENT
-                    .withDescription("Expected a cluster node forwarding a Write request; Guess comes later.")
+                    .withDescription("Expected a cluster node forwarding Write or Guess.")
                     .asRuntimeException());
             return;
         }
@@ -112,8 +115,54 @@ public final class CoordinationServiceImpl
                     .asRuntimeException());
             return;
         }
-        observer.onNext(coordinator.submitWrite(request.getWrite()));
+        observer.onNext(request.hasWrite() ? game.write(request.getWrite()) : game.guess(request.getGuess()));
         observer.onCompleted();
+    }
+
+    @Override
+    public void heartbeat(HeartbeatRequest request, StreamObserver<NodeResponse> observer) {
+        try {
+            synchronized (state) {
+                requireLeader(request.getLeaderId(), request.getLeaderEpoch());
+                election.leaderContact();
+                GameState local = state.snapshot();
+                if (local.hasLastCommitted() != request.hasLastCommitted()
+                        || !local.getLastCommitted().equals(request.getLastCommitted())) state.pause();
+            }
+            respond(observer, true, "Heartbeat received.");
+        } catch (IllegalArgumentException | IllegalStateException error) {
+            respond(observer, false, error.getMessage());
+        } catch (IOException error) { storageFailure(observer, error); }
+    }
+
+    @Override
+    public void election(ElectionRequest request, StreamObserver<ElectionResponse> observer) {
+        if (!clusterId(request.getFromNodeId())) {
+            observer.onError(Status.INVALID_ARGUMENT.asRuntimeException());
+            return;
+        }
+        synchronized (state) {
+            ElectionResponse.Builder reply = ElectionResponse.newBuilder().setFromNodeId(nodeId())
+                    .setCurrentEpoch(state.getCurrentEpoch());
+            state.getLatestTag().ifPresent(reply::setLatestTag);
+            observer.onNext(reply.build());
+        }
+        observer.onCompleted();
+    }
+
+    @Override
+    public void syncLog(SyncLogRequest request, StreamObserver<NodeResponse> observer) {
+        try {
+            synchronized (state) {
+                requireLeader(request.getLeaderId(), request.getLeaderEpoch());
+                state.installRecoveredLog(request.getLeaderId(), request.getLeaderEpoch(), request.getEntriesList());
+                election.leaderContact();
+                resumeIfResolved();
+            }
+            respond(observer, true, "Log checkpoint durably synchronized.");
+        } catch (IllegalArgumentException | IllegalStateException error) {
+            respond(observer, false, error.getMessage());
+        } catch (IOException error) { storageFailure(observer, error); }
     }
 
     /** Called while holding the state lock, so epoch validation and logging are atomic. */

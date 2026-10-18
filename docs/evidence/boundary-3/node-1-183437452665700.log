@@ -1,0 +1,5 @@
+Picked up JAVA_TOOL_OPTIONS: -Djdk.net.unixdomain.tmpdir=D:\zooKeeperLab\target\nonexistent-selector-dir
+[Node 1] MANUAL LEADER bootstrap, epoch=1
+[Node 1] PROPOSE (1,1) value=50 local durable ACK=1
+[Node 1] ACK nodes=[1, 2, 3, 4, 5] quorum=3
+[Node 1] COMMIT (1,1)

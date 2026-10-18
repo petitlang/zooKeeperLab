@@ -1,0 +1,10 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="ZooKeeper Node 3" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="fr.isep.node.NodeServer" />
+    <module name="ZooKeeper" />
+    <option name="PROGRAM_PARAMETERS" value="--id 3" />
+    <option name="VM_PARAMETERS" value="-Djdk.net.unixdomain.tmpdir=$PROJECT_DIR$/target/nonexistent-selector-dir" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <method v="2"><option name="Make" enabled="true" /></method>
+  </configuration>
+</component>

@@ -60,7 +60,7 @@ class ReplicationTest {
     }
 
     private void start(int id) throws IOException {
-        NodeServer node = new NodeServer(config(id));
+        NodeServer node = new NodeServer(config(id), false);
         try {
             node.start();
             nodes.put(id, node);
@@ -351,4 +351,85 @@ class ReplicationTest {
         assertEquals(NodeRole.FOLLOWER, read(1).getRole());
         assertFalse(read(1).getReady());
     }
+    private GuessRequest guess(String client, String request, int value, long round) {
+        return GuessRequest.newBuilder().setClientId(client).setRequestId(request).setValue(value).setRoundId(round).build();
+    }
+
+    @Test
+    void exactlyTwoDistinctClientsSettleAndRetriesDoNotCountTwice() throws Exception {
+        startCluster();
+        assertEquals(RequestStatus.REQUEST_COMMITTED, game(1).write(write("target", 50)).getStatus());
+        GuessRequest first = guess("B", "b1", 30, 1);
+        OperationResponse accepted = game(3).guess(first);
+        assertEquals(RequestStatus.REQUEST_ACCEPTED, accepted.getStatus());
+        assertEquals(1, accepted.getState().getReceivedGuesses());
+        assertEquals(2, accepted.getState().getRequiredGuesses());
+        assertEquals(RequestStatus.REQUEST_ACCEPTED, game(5).guess(first).getStatus());
+        assertEquals(RequestStatus.REQUEST_REJECTED, game(1).guess(guess("B", "b2", 62, 1)).getStatus());
+        assertEquals(50, read(1).getTarget());
+        GuessRequest second = guess("C", "c1", 62, 1);
+        OperationResponse result = game(4).guess(second);
+        assertEquals(RequestStatus.REQUEST_COMMITTED, result.getStatus(), result.getMessage());
+        assertEquals(62, result.getState().getTarget());
+        assertEquals(2, result.getState().getRoundId());
+        assertEquals(0, result.getState().getReceivedGuesses());
+        assertEquals(RequestStatus.REQUEST_COMMITTED, game(2).guess(second).getStatus());
+        assertEquals(RequestStatus.REQUEST_REJECTED, game(2).guess(second.toBuilder().setValue(61).build()).getStatus());
+        assertEquals(RequestStatus.REQUEST_REJECTED, game(2).guess(first).getStatus());
+        assertEquals(Operation.GUESS, log(1).getEntries(1).getOp());
+    }
+
+    @Test
+    void tiesUseArrivalOrderAndWriteInvalidatesCollectedGuesses() throws Exception {
+        startCluster();
+        game(1).write(write("target", 50));
+        game(1).guess(guess("B", "b1", 40, 1));
+        assertEquals(RequestStatus.REQUEST_COMMITTED, game(1).guess(guess("C", "c1", 60, 1)).getStatus());
+        assertEquals(40, read(1).getTarget());
+        game(1).guess(guess("B", "b2", 0, 2));
+        assertEquals(RequestStatus.REQUEST_COMMITTED, game(1).write(write("reset", 0)).getStatus());
+        assertEquals(0, read(1).getReceivedGuesses());
+        assertEquals(RequestStatus.REQUEST_REJECTED, game(1).guess(guess("C", "old", 100, 2)).getStatus());
+        game(1).guess(guess("B", "b3", 0, 3));
+        assertEquals(RequestStatus.REQUEST_COMMITTED, game(1).guess(guess("C", "c3", 100, 3)).getStatus());
+        assertEquals(0, read(1).getTarget());
+    }
+
+    @Test
+    void rejectsInvalidGuessesAndSerializesWriteAgainstSettlement() throws Exception {
+        startCluster();
+        assertEquals(RequestStatus.REQUEST_REJECTED, game(1).guess(guess("B", "b", 10, 0)).getStatus());
+        game(1).write(write("target", 50));
+        assertEquals(RequestStatus.REQUEST_REJECTED, game(1).guess(guess("", "bad", 10, 1)).getStatus());
+        assertEquals(RequestStatus.REQUEST_REJECTED, game(1).guess(guess("B", "bad", 101, 1)).getStatus());
+        assertEquals(RequestStatus.REQUEST_REJECTED, game(1).guess(guess("client", "target", 50, 1)).getStatus());
+        game(1).guess(guess("B", "b", 30, 1));
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<OperationResponse> reset = pool.submit(() -> game(2).write(write("reset", 80)));
+            Future<OperationResponse> settle = pool.submit(() -> game(3).guess(guess("C", "c", 62, 1)));
+            assertEquals(RequestStatus.REQUEST_COMMITTED, reset.get(10, TimeUnit.SECONDS).getStatus());
+            RequestStatus status = settle.get(10, TimeUnit.SECONDS).getStatus();
+            assertTrue(status == RequestStatus.REQUEST_COMMITTED || status == RequestStatus.REQUEST_REJECTED);
+        } finally { pool.shutdownNow(); }
+        assertEquals(80, read(1).getTarget());
+        assertEquals(0, read(1).getReceivedGuesses());
+    }
+
+    @Test
+    void pendingWinnerIsRetriedWithoutChoosingAnotherGuess() throws Exception {
+        startCluster();
+        game(1).write(write("target", 50));
+        stop(3); stop(4); stop(5);
+        GuessRequest a = guess("B", "b", 30, 1), b = guess("C", "c", 62, 1);
+        assertEquals(RequestStatus.REQUEST_ACCEPTED, game(1).guess(a).getStatus());
+        assertEquals(RequestStatus.REQUEST_UNCERTAIN, game(1).guess(b).getStatus());
+        assertEquals(50, read(1).getTarget());
+        assertEquals(62, log(1).getEntries(1).getValue());
+        start(3);
+        assertEquals(RequestStatus.REQUEST_COMMITTED, game(1).guess(a).getStatus());
+        assertEquals(62, read(1).getTarget());
+        assertEquals(2, log(1).getEntriesCount());
+    }
+
 }

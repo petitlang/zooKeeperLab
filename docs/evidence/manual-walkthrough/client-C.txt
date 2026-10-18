@@ -1,0 +1,18 @@
+Connected node=5 client=C
+Commands: write N, guess N, read, retry, connect NODE, help, quit
+> guess 62
+request=1e940137-08cf-472e-a2ee-1564772cdd7e
+REQUEST_COMMITTED Winner=62. Committed; applied on 5/5 nodes. Lagging nodes catch up on a later write.
+node=1 leader=1 role=LEADER ready=true target=62 round=2 last=1:2 guesses=0/2 settling=false
+> guess 60
+request=a002dc2c-6011-4253-86ca-ed381af93fd6
+REQUEST_COMMITTED Winner=40. Committed; applied on 5/5 nodes. Lagging nodes catch up on a later write.
+node=1 leader=1 role=LEADER ready=true target=40 round=4 last=1:4 guesses=0/2 settling=false
+> guess 100
+request=17770601-89fa-4607-9089-c224b3801d6c
+REQUEST_COMMITTED Winner=0. Committed; applied on 5/5 nodes. Lagging nodes catch up on a later write.
+node=1 leader=1 role=LEADER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> guess 80
+request=59c3a5c5-577f-4b7f-a263-229bfd0bcf97
+REQUEST_COMMITTED Winner=39. Committed; applied on 4/5 nodes. Lagging nodes catch up on a later write.
+node=2 leader=2 role=LEADER ready=true target=39 round=8 last=2:2 guesses=0/2 settling=false

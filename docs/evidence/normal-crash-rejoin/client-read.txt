@@ -1,0 +1,3 @@
+Picked up JAVA_TOOL_OPTIONS: -Djdk.net.unixdomain.tmpdir=D:\zooKeeperLab\target\nonexistent-selector-dir
+Connected node=2 client=inspect
+node=2 leader=1 role=FOLLOWER ready=true target=62 round=2 last=1:2 guesses=0/2 settling=false

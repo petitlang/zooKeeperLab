@@ -1,0 +1,2 @@
+Connected node=2 client=script-check
+node=2 leader=1 role=FOLLOWER ready=true target=100 round=9 last=2:3 guesses=0/2 settling=false

@@ -1,0 +1,9 @@
+Picked up JAVA_TOOL_OPTIONS: -Djdk.net.unixdomain.tmpdir=D:\zooKeeperLab\target\nonexistent-selector-dir
+[Node 2] Started port=23002 quorum=3/5 log=C:\Users\Yuefan\AppData\Local\Temp\junit-1825421877076465438\node-2\entries.log
+[Node 2] ACK (1,1)
+[Node 2] COMMIT (1,1)
+[Node 2] RECOVERY synchronized entries=1 quorum=3 epoch=2
+[Node 2] LEADER ready epoch=2
+[Node 2] PROPOSE (2,1) value=70 local durable ACK=1
+[Node 2] ACK nodes=[2, 3, 4, 5] quorum=3
+[Node 2] COMMIT (2,1)

@@ -1,0 +1,108 @@
+Connected node=1 client=D
+Commands: write N, guess N, read, retry, connect NODE, help, quit
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> connect 2
+Connected node=2 client=D
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=1 role=FOLLOWER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=unknown role=CANDIDATE ready=false target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=unknown role=CANDIDATE ready=false target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=unknown role=CANDIDATE ready=false target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=unknown role=CANDIDATE ready=false target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=unknown role=CANDIDATE ready=false target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=2 role=LEADER ready=false target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=2 role=LEADER ready=false target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=2 role=LEADER ready=false target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=2 role=LEADER ready=false target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=2 role=LEADER ready=false target=0 round=6 last=1:6 guesses=0/2 settling=false
+> read
+node=2 leader=2 role=LEADER ready=true target=0 round=6 last=1:6 guesses=0/2 settling=false
+> connect 1
+Connected node=1 client=D
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+node=1 leader=2 role=FOLLOWER ready=true target=39 round=8 last=2:2 guesses=0/2 settling=false
+> connect 1
+Connected node=1 client=D
+> read
+node=1 leader=2 role=FOLLOWER ready=true target=100 round=9 last=2:3 guesses=0/2 settling=false
+> connect 2
+Connected node=2 client=D
+> read
+node=2 leader=2 role=LEADER ready=true target=100 round=9 last=2:3 guesses=0/2 settling=false
+> connect 3
+Connected node=3 client=D
+> read
+node=3 leader=2 role=FOLLOWER ready=true target=100 round=9 last=2:3 guesses=0/2 settling=false
+> connect 4
+Connected node=4 client=D
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+RPC UNAVAILABLE: request retained; use read/retry, or connect NODE if this node stopped.
+> read
+node=4 leader=unknown role=FOLLOWER ready=false target=39 round=8 last=2:2 guesses=0/2 settling=false
+> read
+node=4 leader=1 role=FOLLOWER ready=true target=100 round=9 last=2:3 guesses=0/2 settling=false
+> connect 5
+Connected node=5 client=D
+> read
+node=5 leader=1 role=FOLLOWER ready=true target=100 round=9 last=2:3 guesses=0/2 settling=false

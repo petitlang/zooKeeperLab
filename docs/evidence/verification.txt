@@ -1,0 +1,21 @@
+Verification: 37 tests, 0 failures, 0 errors, 0 skipped.
+Command: ./scripts/test.ps1
+Date: 2026-10-18 (Europe/Paris)
+
+boundary-1
+BOUNDARY stage=1 recovered=50 newLeader=2 resumed=70
+
+boundary-2
+BOUNDARY stage=2 recovered=62 newLeader=2 resumed=70
+
+boundary-3
+BOUNDARY stage=3 recovered=62 newLeader=2 resumed=70
+
+normal-crash-rejoin
+WRITE target=50 tag=epoch: 1
+seq: 1
+
+GUESS 30,62 -> target=62 round=2
+CRASH old=1 new=2 resumed target=40
+REJOIN original node caught up; GUESS resumed target=39
+QUORUM 2/5 held target=39; same request after 3/5 committed target=100

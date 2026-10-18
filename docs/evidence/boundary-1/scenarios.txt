@@ -1,0 +1,1 @@
+BOUNDARY stage=1 recovered=50 newLeader=2 resumed=70

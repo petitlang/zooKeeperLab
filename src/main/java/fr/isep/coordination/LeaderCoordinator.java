@@ -3,48 +3,26 @@ package fr.isep.coordination;
 import fr.isep.node.NodeConfig;
 import fr.isep.node.NodeState;
 import fr.isep.proto.*;
-import io.grpc.Deadline;
-import io.grpc.ConnectivityState;
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.*;
 import java.util.function.BiFunction;
 
 /** Proposal tags, replication, quorum acknowledgments, and commit delivery. */
 public final class LeaderCoordinator implements AutoCloseable {
     private final NodeConfig config;
     private final NodeState state;
-    private final Map<Integer, ManagedChannel> channels = new HashMap<>();
-    private final ExecutorService rpcPool;
+    private final PeerTransport transport;
     private volatile boolean closed;
 
-    public LeaderCoordinator(NodeConfig config, NodeState state) {
+    public LeaderCoordinator(NodeConfig config, NodeState state, PeerTransport transport) {
         this.config = Objects.requireNonNull(config, "config");
         this.state = Objects.requireNonNull(state, "state");
-        rpcPool = Executors.newFixedThreadPool(config.getPeers().size(), task -> {
-            Thread thread = new Thread(task, "node-" + config.getNodeId() + "-replication");
-            thread.setDaemon(true);
-            return thread;
-        });
-        try {
-            for (NodeConfig.NodeAddress peer : config.getPeers()) {
-                channels.put(peer.nodeId(), ManagedChannelBuilder.forAddress(peer.host(), peer.port())
-                        .usePlaintext().build());
-            }
-        } catch (RuntimeException | Error e) {
-            close();
-            throw e;
-        }
+        this.transport = Objects.requireNonNull(transport, "transport");
     }
 
     /** Temporary development bootstrap for a fresh cluster, not the lab election algorithm. */
@@ -80,6 +58,8 @@ public final class LeaderCoordinator implements AutoCloseable {
             state.pause();
             throw new IOException("Leader announcement did not reach a majority.");
         }
+        callPeers((peer, stub) -> response(peer, stub.syncLog(SyncLogRequest.newBuilder()
+                .setLeaderId(config.getNodeId()).setLeaderEpoch(epoch).build()), epoch));
         state.markReady();
         System.out.println("[Node " + config.getNodeId() + "] MANUAL LEADER bootstrap, epoch=" + epoch);
     }
@@ -96,22 +76,26 @@ public final class LeaderCoordinator implements AutoCloseable {
         if (closed || !snapshot.hasLeaderId() || !snapshot.getReady()) {
             return result(RequestStatus.REQUEST_REJECTED, request.getRequestId(), "No ready leader is known.", null);
         }
-        ManagedChannel leader = channels.get(snapshot.getLeaderId());
-        if (leader == null) {
-            return result(RequestStatus.REQUEST_REJECTED, request.getRequestId(), "Invalid leader address.", null);
-        }
         try {
-            return CoordinationServiceGrpc.newBlockingStub(leader)
-                    .withDeadlineAfter(config.getRpcTimeout().toMillis() * 3 + 500, TimeUnit.MILLISECONDS)
-                    .forward(ForwardRequest.newBuilder().setFromNodeId(config.getNodeId()).setWrite(request).build());
+            return transport.forward(snapshot.getLeaderId(), ForwardRequest.newBuilder()
+                    .setFromNodeId(config.getNodeId()).setWrite(request).build());
         } catch (StatusRuntimeException e) {
             return result(RequestStatus.REQUEST_UNCERTAIN, request.getRequestId(),
                     "Leader RPC failed; retry the same request ID: " + e.getStatus().getCode(), null);
         }
     }
 
+    public synchronized OperationResponse commitGuess(GuessRequest request, int expectedEpoch) {
+        LogEntry existing = state.findRequest(request.getClientId(), request.getRequestId()).orElse(null);
+        if (existing == null && (state.getCurrentEpoch() != expectedEpoch
+                || state.snapshot().getRoundId() != request.getRoundId())) {
+            return result(RequestStatus.REQUEST_REJECTED, request.getRequestId(), "Round or leader changed.", null);
+        }
+        return commitValue(Operation.GUESS, request.getValue(), request.getClientId(), request.getRequestId());
+    }
+
     /** Serialize writes so later operations cannot commit ahead of an unresolved proposal. */
-    public synchronized OperationResponse commitValue(Operation op, int value, String clientId, String requestId) {
+    private synchronized OperationResponse commitValue(Operation op, int value, String clientId, String requestId) {
         if (closed || value < 0 || value > 100 || clientId.isBlank() || requestId.isBlank()
                 || (op != Operation.WRITE && op != Operation.GUESS)) {
             return result(RequestStatus.REQUEST_REJECTED, requestId, "Invalid operation, value, or request identity.", null);
@@ -214,7 +198,16 @@ public final class LeaderCoordinator implements AutoCloseable {
         if (!announcement.accepted()) {
             return announcement;
         }
-        for (LogEntry entry : history) {
+        List<LogEntry> proposals = history;
+        if (history.stream().anyMatch(entry -> entry.getTag().getEpoch() != epoch)) {
+            // Recover old tags using a checkpoint, then use normal PROPOSE/ACK for the new write.
+            PeerResult synchronizedPrefix = response(peer, stub.syncLog(SyncLogRequest.newBuilder()
+                    .setLeaderId(config.getNodeId()).setLeaderEpoch(epoch)
+                    .addAllEntries(history.subList(0, history.size() - 1)).build()), epoch);
+            if (!synchronizedPrefix.accepted()) return synchronizedPrefix;
+            proposals = List.of(history.get(history.size() - 1));
+        }
+        for (LogEntry entry : proposals) {
             Ack ack = stub.propose(ProposeRequest.newBuilder().setLeaderId(config.getNodeId()).setLeaderEpoch(epoch)
                     .setEntry(entry.toBuilder().setStatus(LogStatus.PROPOSED)).build());
             if (ack.getFromNodeId() != peer.nodeId()) {
@@ -249,46 +242,8 @@ public final class LeaderCoordinator implements AutoCloseable {
     /** One shared deadline per phase; four peers are contacted concurrently. */
     private List<PeerResult> callPeers(BiFunction<NodeConfig.NodeAddress,
             CoordinationServiceGrpc.CoordinationServiceBlockingStub, PeerResult> call) {
-        Deadline deadline = Deadline.after(config.getRpcTimeout().toNanos(), TimeUnit.NANOSECONDS);
-        CompletionService<PeerResult> completed = new ExecutorCompletionService<>(rpcPool);
-        List<Future<PeerResult>> futures = new ArrayList<>();
-        for (NodeConfig.NodeAddress peer : config.getPeers()) {
-            ManagedChannel channel = channels.get(peer.nodeId());
-            // A new replication attempt may follow a node restart. Do not carry
-            // a previous outage's exponential backoff into this explicit retry.
-            if (channel.getState(false) == ConnectivityState.TRANSIENT_FAILURE) {
-                channel.resetConnectBackoff();
-            }
-            futures.add(completed.submit(() -> {
-                try {
-                    return call.apply(peer, CoordinationServiceGrpc.newBlockingStub(channel)
-                            .withWaitForReady().withDeadline(deadline));
-                } catch (RuntimeException e) {
-                    return new PeerResult(peer.nodeId(), false, 0, e.getMessage() == null ? "RPC failed" : e.getMessage());
-                }
-            }));
-        }
-        List<PeerResult> results = new ArrayList<>();
-        try {
-            for (int i = 0; i < futures.size(); i++) {
-                long remaining = deadline.timeRemaining(TimeUnit.NANOSECONDS);
-                if (remaining <= 0) {
-                    break;
-                }
-                Future<PeerResult> result = completed.poll(remaining, TimeUnit.NANOSECONDS);
-                if (result == null) {
-                    break;
-                }
-                results.add(result.get());
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (ExecutionException e) {
-            throw new IllegalStateException("Unexpected peer task failure.", e.getCause());
-        } finally {
-            futures.forEach(future -> future.cancel(true));
-        }
-        return results;
+        return transport.callAll(call).stream().filter(reply -> reply.error() == null)
+                .map(PeerTransport.Reply::value).toList();
     }
 
     private void observeEpochs(List<PeerResult> peers) throws IOException {
@@ -333,19 +288,5 @@ public final class LeaderCoordinator implements AutoCloseable {
     @Override
     public synchronized void close() {
         closed = true;
-        rpcPool.shutdownNow();
-        channels.values().forEach(ManagedChannel::shutdownNow);
-        try {
-            rpcPool.awaitTermination(2, TimeUnit.SECONDS);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-            for (ManagedChannel channel : channels.values()) {
-                long remaining = deadline - System.nanoTime();
-                if (remaining > 0) {
-                    channel.awaitTermination(remaining, TimeUnit.NANOSECONDS);
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 }

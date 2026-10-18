@@ -1,0 +1,7 @@
+WRITE target=50 tag=epoch: 1
+seq: 1
+
+GUESS 30,62 -> target=62 round=2
+CRASH old=1 new=2 resumed target=40
+REJOIN original node caught up; GUESS resumed target=39
+QUORUM 2/5 held target=39; same request after 3/5 committed target=100
