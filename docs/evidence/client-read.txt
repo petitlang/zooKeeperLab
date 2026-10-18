@@ -1,0 +1,2 @@
+Picked up JAVA_TOOL_OPTIONS:  -Djdk.net.unixdomain.tmpdir=D:\zooKeeperLab/target/nonexistent-socket-dir
+node=4 role=FOLLOWER leader=1 ready=true target=50 round=1 tag=(1,1)

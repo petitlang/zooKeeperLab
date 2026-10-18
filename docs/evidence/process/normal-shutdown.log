@@ -1,0 +1,11 @@
+Picked up JAVA_TOOL_OPTIONS:  -Djdk.net.unixdomain.tmpdir=D:\zooKeeperLab/target/nonexistent-socket-dir
+[Node 1] Started on 127.0.0.1:18601
+[Node 1] Registered: zookeeper.GameService
+[Node 1] Registered: zookeeper.CoordinationService
+[Node 1] Peers: [Node 2=127.0.0.1:18602, Node 3=127.0.0.1:18603, Node 4=127.0.0.1:18604, Node 5=127.0.0.1:18605]
+[Node 1] Quorum: 3/5
+[Node 1] Data directory: C:\Users\Yuefan\AppData\Local\Temp\junit-7712483465690163928\node-1
+[Node 1] Restored: epoch=0 seq=0 target=unset round=0 pending=0
+[Node 1] Waiting for election and log synchronization...
+PROCESS_READY
+PROCESS_CLOSED

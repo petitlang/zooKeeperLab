@@ -1,0 +1,26 @@
+<!doctype html><html lang="fr"><meta charset="utf-8">
+<title>Tests supplementaires : reprise et quorum</title><style>
+*{box-sizing:border-box}body{margin:0;background:#fff;color:#172033;
+font-family:Arial,sans-serif;width:980px;padding:24px}h1{font-size:26px;margin:0 0 8px}
+p{font-size:16px;color:#536070;margin:0 0 20px}pre{white-space:pre-wrap;
+font:18px/1.35 Consolas,monospace;border:1px solid #ccd3dc;background:#f5f7fa;
+padding:18px;margin:0}footer{font-size:14px;margin-top:12px;color:#536070}
+</style><h1>Tests supplementaires : reprise et quorum</h1>
+<p>Execution validee le 13 octobre 2026 - cinq JVM independantes, gRPC localhost.</p>
+<pre>RECOVER pending tail: latest-tag node 3 wins and commits 77
+node=1 role=FOLLOWER leader=3 ready=true
+    target=77 round=4 tag=(2,2)
+node=3 role=LEADER leader=3 ready=true
+    target=77 round=4 tag=(2,2)
+node=4 role=FOLLOWER leader=3 ready=true
+    target=77 round=4 tag=(2,2)
+node=5 role=FOLLOWER leader=3 ready=true
+    target=77 round=4 tag=(2,2)
+
+ONLY 2/5 alive: WRITE 18 is not committed
+node=3 role=LEADER leader=3 ready=false
+    target=77 round=4 tag=(2,2)
+node=4 role=FOLLOWER leader=3 ready=true
+    target=77 round=4 tag=(2,2)</pre>
+<footer>Capture de traces reelles affichees sur une page locale. Sources : scenarios.txt et node-*.log.</footer>
+</html>

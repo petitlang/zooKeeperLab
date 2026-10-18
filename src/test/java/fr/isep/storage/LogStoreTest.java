@@ -176,4 +176,26 @@ class LogStoreTest {
             Runtime.getRuntime().halt(0); // No close or JVM shutdown hooks.
         }
     }
+
+    @Test
+    void synchronizedCheckpointSurvivesRestartAndCannotEraseCommittedHistory() throws Exception {
+        LogEntry first = proposal(1, 1, 1, 50);
+        LogEntry pending = proposal(1, 2, 2, 62);
+        try (LogStore log = new LogStore(logFile())) {
+            log.appendProposal(first);
+            log.commit(first.getTag());
+            log.recordEpoch(2);
+            LogEntry committed = first.toBuilder().setStatus(LogStatus.COMMITTED).build();
+            log.synchronize(List.of(committed, pending));
+            assertThrows(IllegalArgumentException.class, () -> log.synchronize(List.of()));
+            assertThrows(IllegalArgumentException.class, () -> log.synchronize(List.of(first)));
+            log.commit(pending.getTag());
+        }
+        // A torn checkpoint never replaces the last complete log.
+        Files.writeString(logFile(), "SNAPSHOT\tunfinished", StandardOpenOption.APPEND);
+        try (LogStore restored = new LogStore(logFile())) {
+            assertEquals(2, restored.getCurrentEpoch());
+            assertEquals(62, restored.getLatestCommittedEntry().orElseThrow().getValue());
+        }
+    }
 }

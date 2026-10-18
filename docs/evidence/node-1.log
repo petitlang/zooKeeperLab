@@ -1,0 +1,40 @@
+Picked up JAVA_TOOL_OPTIONS:  -Djdk.net.unixdomain.tmpdir=D:\zooKeeperLab/target/nonexistent-socket-dir
+[Node 1] Started on 127.0.0.1:18501
+[Node 1] Registered: zookeeper.GameService
+[Node 1] Registered: zookeeper.CoordinationService
+[Node 1] Peers: [Node 2=127.0.0.1:18502, Node 3=127.0.0.1:18503, Node 4=127.0.0.1:18504, Node 5=127.0.0.1:18505]
+[Node 1] Quorum: 3/5
+[Node 1] Data directory: C:\Users\Yuefan\AppData\Local\Temp\junit-14851320225729747828\node-1
+[Node 1] Restored: epoch=0 seq=0 target=unset round=0 pending=0
+[Node 1] Waiting for election and log synchronization...
+[Node 1] ELECTION winner=1 latest=(0,0)
+[Node 1] LEADER ready epoch=1 seq=0 synchronized=5/5
+[Node 1] PROPOSE (1,1) WRITE value=50
+[Node 1] ACK (1,1) from=2
+[Node 1] ACK (1,1) from=3
+[Node 1] ACK (1,1) from=4
+[Node 1] ACK (1,1) from=5
+[Node 1] COMMIT (1,1) quorum=5/5
+[Node 1] GUESS client=B value=30 round=1
+[Node 1] GUESS client=C value=62 round=1
+[Node 1] WINNER round=1 value=62
+[Node 1] PROPOSE (1,2) GUESS value=62
+[Node 1] ACK (1,2) from=2
+[Node 1] ACK (1,2) from=3
+[Node 1] ACK (1,2) from=4
+[Node 1] ACK (1,2) from=5
+[Node 1] COMMIT (1,2) quorum=5/5
+[Node 1] ROUND result=REQUEST_COMMITTED
+Picked up JAVA_TOOL_OPTIONS:  -Djdk.net.unixdomain.tmpdir=D:\zooKeeperLab/target/nonexistent-socket-dir
+[Node 1] Started on 127.0.0.1:18501
+[Node 1] Registered: zookeeper.GameService
+[Node 1] Registered: zookeeper.CoordinationService
+[Node 1] Peers: [Node 2=127.0.0.1:18502, Node 3=127.0.0.1:18503, Node 4=127.0.0.1:18504, Node 5=127.0.0.1:18505]
+[Node 1] Quorum: 3/5
+[Node 1] Data directory: C:\Users\Yuefan\AppData\Local\Temp\junit-14851320225729747828\node-1
+[Node 1] Restored: epoch=1 seq=2 target=62 round=2 pending=0
+[Node 1] Waiting for election and log synchronization...
+[Node 1] SYNC entries=3 ready=true
+[Node 1] FOLLOW leader=3 epoch=3
+[Node 1] SYNC entries=4 ready=false
+[Node 1] SYNC entries=4 ready=true

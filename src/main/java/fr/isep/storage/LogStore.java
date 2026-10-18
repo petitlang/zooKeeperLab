@@ -2,6 +2,7 @@ package fr.isep.storage;
 
 import fr.isep.proto.LogEntry;
 import fr.isep.proto.LogStatus;
+import fr.isep.proto.LogSnapshot;
 import fr.isep.proto.Operation;
 import fr.isep.proto.ProposalTag;
 
@@ -129,6 +130,49 @@ public final class LogStore implements AutoCloseable {
                 .filter(entry -> entry.getStatus() == LogStatus.COMMITTED).findFirst();
     }
 
+    /** Recovery replaces only uncommitted history; a complete checkpoint is one journal line. */
+    public synchronized void synchronize(List<LogEntry> incoming) throws IOException {
+        ensureOpen();
+        NavigableMap<ProposalTag, LogEntry> checked = checkSnapshot(incoming);
+        String encoded = Base64.getEncoder().encodeToString(
+                LogSnapshot.newBuilder().addAllEntries(incoming).build().toByteArray());
+        persist("SNAPSHOT\t" + encoded + "\n");
+        entries.clear();
+        entries.putAll(checked);
+    }
+
+    private NavigableMap<ProposalTag, LogEntry> checkSnapshot(List<LogEntry> incoming) {
+        NavigableMap<ProposalTag, LogEntry> checked = new TreeMap<>(TAG_ORDER);
+        LogEntry previous = null;
+        boolean pending = false;
+        for (LogEntry entry : incoming) {
+            validateEntry(entry);
+            int expectedSeq = previous != null
+                    && previous.getTag().getEpoch() == entry.getTag().getEpoch()
+                    ? previous.getTag().getSeq() + 1 : 1;
+            if (entry.getTag().getEpoch() > currentEpoch
+                    || (previous != null && TAG_ORDER.compare(previous.getTag(), entry.getTag()) >= 0)
+                    || entry.getTag().getSeq() != expectedSeq
+                    || entry.getRoundId() != (previous == null ? 1 : previous.getRoundId() + 1)
+                    || (pending && entry.getStatus() == LogStatus.COMMITTED)) {
+                throw new IllegalArgumentException("Invalid ordered snapshot.");
+            }
+            pending |= entry.getStatus() == LogStatus.PROPOSED;
+            checked.put(entry.getTag(), entry);
+            previous = entry;
+        }
+        for (LogEntry old : entries.values()) {
+            if (old.getStatus() == LogStatus.COMMITTED) {
+                LogEntry replacement = checked.get(old.getTag());
+                if (replacement == null || replacement.getStatus() != LogStatus.COMMITTED) {
+                    throw new IllegalArgumentException("Cannot remove committed history.");
+                }
+                requireSameProposal(old, replacement);
+            }
+        }
+        return checked;
+    }
+
     private void validateNextProposal(LogEntry entry) {
         ProposalTag tag = entry.getTag();
         if (tag.getEpoch() < currentEpoch) {
@@ -228,6 +272,18 @@ public final class LogStore implements AutoCloseable {
 
     private void replayLine(String line) {
         String[] fields = line.split("\t", -1);
+        if (fields.length == 2 && "SNAPSHOT".equals(fields[0])) {
+            try {
+                List<LogEntry> restored = LogSnapshot.parseFrom(
+                        Base64.getDecoder().decode(fields[1])).getEntriesList();
+                NavigableMap<ProposalTag, LogEntry> checked = checkSnapshot(restored);
+                entries.clear();
+                entries.putAll(checked);
+                return;
+            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+                throw new IllegalArgumentException("Invalid checkpoint.", e);
+            }
+        }
         if (fields.length == 2 && "EPOCH".equals(fields[0])) {
             int epoch = Integer.parseInt(fields[1]);
             if (epoch < currentEpoch) {

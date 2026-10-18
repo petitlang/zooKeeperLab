@@ -106,7 +106,7 @@ public final class NodeConfig {
     }
 
     public Duration getRpcTimeout() {
-        return Duration.ofSeconds(1);
+        return Duration.ofMillis(300);
     }
 
     public Duration getHeartbeatInterval() {
@@ -114,7 +114,7 @@ public final class NodeConfig {
     }
 
     public Duration getElectionTimeout() {
-        return Duration.ofMillis(2500);
+        return Duration.ofMillis(5000);
     }
 
     /** A node's address in the fixed localhost cluster. */

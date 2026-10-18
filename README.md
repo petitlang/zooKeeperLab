@@ -1,133 +1,180 @@
-# ZooKeeper-like lab
+# TP ZooKeeper-like - Yuefan Liu
 
-Java 17 and gRPC implementation of the Lab3 coordination system.
+Java 17, Maven et gRPC. Cinq processus independants : un leader, quatre followers.
 
-## Current stage
+## Lien avec les TP precedents
 
-Five independent localhost nodes can start and register both `GameService` and
-`CoordinationService` on their respective ports. `LogStore` now persists proposals,
-commit updates, and epochs; `NodeState` restores the committed target and manages
-thread-safe runtime state. The RPC handlers, election algorithm, replication, and
-game rules will be implemented in subsequent steps. Calling an existing RPC
-currently returns `UNIMPLEMENTED`.
+Le TP gRPC Calculator utilisait `ServerBuilder`, `ManagedChannelBuilder`, un
+blocking stub et `StreamObserver`. On garde exactement ces mecanismes : les RPC
+Add/Divide sont remplaces par Write/Guess/Read et les RPC entre noeuds. Le menu
+`Scanner` reprend le principe du SocketClient. Les classes generees par protoc
+ne sont pas a modifier. Les anciens projets restent inchanges.
 
-## Compile
+## Compiler
 
-Run commands from `D:\ZooKeeper\ZooKeeper` with JDK 17 or later and Maven:
+Dans PowerShell, depuis la racine du projet, avec Java 17+ :
 
 ```powershell
-Set-Location 'D:\ZooKeeper\ZooKeeper'
+Set-Location 'D:\zooKeeperLab'
+./scripts/build.ps1
+```
+
+Les scripts trouvent Maven dans PATH ou dans IntelliJ IDEA. Si PowerShell bloque
+les scripts, utiliser pour cette session uniquement :
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+```
+
+Alternative avec Maven dans PATH :
+
+```powershell
 mvn compile
-```
-
-## Start five nodes
-
-Open five terminals in the project directory. Run one command in each terminal:
-
-```powershell
 mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 1"
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 2"
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 3"
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 4"
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 5"
+mvn exec:java "-Dexec.mainClass=fr.isep.client.ClientApp" "-Dexec.args=--node 4 --client A"
 ```
 
-| Node | Address | Data directory |
-| --- | --- | --- |
-| 1 | 127.0.0.1:5001 | data/node-1 |
-| 2 | 127.0.0.1:5002 | data/node-2 |
-| 3 | 127.0.0.1:5003 | data/node-3 |
-| 4 | 127.0.0.1:5004 | data/node-4 |
-| 5 | 127.0.0.1:5005 | data/node-5 |
+## Lancer les cinq noeuds
 
-Both services share each node's port. Each node knows all five configured
-addresses and excludes itself from its four peers. The quorum is fixed at 3.
-Each node opens its own `entries.log` on startup and restores its state. A restarted
-node starts as a follower with no known leader and `ready=false`; persisted data
-does not restore authority to act as leader.
-
-Use Ctrl+C to stop a node. Orderly JVM shutdown runs the server shutdown hook;
-forced process termination may bypass it. Leader-crash recovery requires the
-election and replication implementation planned for later steps.
-
-## Startup options
-
-- `--id`: required node ID from 1 to 5.
-- `--base-port`: default 5000. Listening port is base port + node ID. All nodes
-  must use the same base port; the valid range is 0 through 65530.
-- `--data-dir`: default `data`, resolved relative to the working directory.
-  Each node gets a `node-<id>` subdirectory.
-- `--help`: print usage and exit.
-
-Example using ports 6001 through 6005 and another data root:
+Ouvrir cinq terminaux dans le projet, puis executer une ligne par terminal :
 
 ```powershell
-mvn exec:java "-Dexec.mainClass=fr.isep.node.NodeServer" "-Dexec.args=--id 1 --base-port 6000 --data-dir local-data"
+./scripts/run-node.ps1 -Id 1
+./scripts/run-node.ps1 -Id 2
+./scripts/run-node.ps1 -Id 3
+./scripts/run-node.ps1 -Id 4
+./scripts/run-node.ps1 -Id 5
 ```
 
-For IntelliJ IDEA, run `fr.isep.node.NodeServer` with program arguments `--id 1`
-and the project directory as the working directory. Create five run
-configurations, changing the ID to 1 through 5.
+Ports : 5001 a 5005. Journaux : `data/node-1/entries.log` a
+`data/node-5/entries.log`. Attendre `LEADER ready` et les messages `SYNC`.
+Le quorum reste toujours 3/5, meme si certains noeuds sont arretes.
+Sur un dossier de donnees neuf, les tags sont egaux et le noeud 1 gagne.
+Apres d'autres executions, le gagnant depend des journaux persistants.
 
-## Persistent log and runtime state
+Options : `-BasePort 6000` (tous les noeuds et clients doivent utiliser cette
+valeur), `-DataDir demo-data` (pour isoler une nouvelle demonstration).
+Ne jamais effacer les journaux pendant une demonstration de reprise.
 
-The log is an append-only UTF-8 journal with tab-separated fields:
+Les scripts utilisent un repertoire inexistant pour le selector interne de
+Windows JDK 17. Cela contourne une erreur de socket Unix constatee sur cette
+machine. Ce repertoire ne doit pas etre cree. Les RPC restent sur TCP/gRPC.
 
-```text
-EPOCH <current epoch>
-ENTRY <epoch> <seq> <op> <value> <status> <client ID> <request ID> <resulting round>
-```
+Dans IntelliJ : ouvrir pom.xml comme projet Maven, generer avec `compile`,
+puis creer cinq configurations `fr.isep.node.NodeServer`, arguments `--id 1` a
+`--id 5`. Working directory : racine du projet. Si necessaire, ajouter l'option VM
+`-Djdk.net.unixdomain.tmpdir=D:/zooKeeperLab/target/nonexistent-socket-dir`.
+Le client est `fr.isep.client.ClientApp`, arguments `--node 4 --client A`.
 
-The example uses spaces for readability; actual separators are tabs. Client and
-request IDs are UTF-8 strings encoded with URL-safe Base64, so embedded tabs or
-newlines cannot break a record. A commit appends the same entry with `COMMITTED`
-status. Replay combines these records into one logical entry per tag.
+## Demonstration 1 : Write
 
-Every mutation calls `FileChannel.force(true)` before returning. Duplicate tags
-with identical proposal data and repeated commits are idempotent; conflicting
-data, gaps, and commits ahead of earlier proposals are rejected. An incomplete
-last line is truncated on restart. A malformed complete record fails startup
-instead of silently dropping history. An exclusive file lock prevents two
-instances from writing the same log.
-
-`NodeState` changes its visible target only after a durable commit. Its synchronized
-methods serialize proposal allocation and state changes. An immutable `GameState`
-snapshot is used to read the target, round, role, and readiness together.
-
-`LogEntry.round_id` identifies the round that starts when that entry commits;
-`GuessRequest.round_id` identifies the existing round being guessed. A proposal
-reserves the next round number, but the visible round advances only on commit.
-
-New leader epochs are persisted before use and reset the sequence to zero. Leader
-selection and resolution of pending proposals still require the future election
-and synchronization algorithm; these storage/state methods do not establish
-quorum on their own.
-
-Run the recovery and concurrency tests:
+Dans un sixieme terminal :
 
 ```powershell
-mvn test
+./scripts/run-client.ps1 -Node 4 -Client A
 ```
 
-## Windows selector compatibility
-
-In the current automated execution environment, both installed JDKs failed
-while initializing a Unix-domain socket used internally by the Windows NIO
-selector (`Unable to establish loopback connection`, caused by
-`Invalid argument: connect`). Five-node startup was verified with JDK 17 by
-making the Unix-domain temporary directory unavailable, which causes the JDK
-to fall back to TCP for this internal connection.
-
-If the same error occurs, set the following only in the affected terminal before
-running Maven. The indicated subdirectory must remain nonexistent:
+Saisir `write 50`, puis `read`. Le follower 4 transmet au leader.
+Dans le terminal leader : PROPOSE, ACK, COMMIT. Le leader compte sa propre
+copie durable et attend au moins deux ACK de followers. Les cinq noeuds rendent
+la cible 50 apres reception du COMMIT.
+Pour lire chaque noeud sans ouvrir un client interactif :
 
 ```powershell
-$env:JAVA_TOOL_OPTIONS = '-Djdk.net.unixdomain.tmpdir=D:\ZooKeeper\ZooKeeper\target\unused-unix-socket-directory'
+1..5 | ForEach-Object { ./scripts/run-client.ps1 -Node $_ -Client inspect -Command 'read' }
 ```
 
-This does not change the application's gRPC TCP protocol. To clear this temporary
-setting, close the terminal or run:
+`REQUEST_COMMITTED` signifie une operation commise. `REQUEST_ACCEPTED` signifie
+une guess mise en attente. `REQUEST_REJECTED` signifie un refus.
+`REQUEST_UNCERTAIN` signifie que le resultat final doit etre verifie par lecture :
+un proposal peut etre termine lors de la reprise. Le programme n'effectue pas
+une nouvelle ecriture automatiquement. Les IDs de requete sont affiches et les
+RPC dedupliquent les retries de meme client/ID ; le menu cree un nouvel ID a
+chaque commande.
+
+## Demonstration 2 : Guess
+
+Ouvrir deux autres terminaux avant de commencer :
 
 ```powershell
-Remove-Item Env:JAVA_TOOL_OPTIONS
+./scripts/run-client.ps1 -Node 3 -Client B
+./scripts/run-client.ps1 -Node 5 -Client C
 ```
+
+Avec target=50, saisir `guess 30` chez B et `guess 62` chez C dans les trois
+secondes suivant la premiere guess. Attendre trois secondes, puis `read`.
+Le leader affiche WINNER value=62, execute PROPOSE/ACK/COMMIT et demarre la ronde
+suivante avec target=62. Distance : |30-50|=20, |62-50|=12.
+
+Choix du jeu : une fenetre de trois secondes demarre a la premiere guess ; une
+guess par client/ronde ; egalite resolue par l'ordre d'arrivee. Le client lit la
+ronde avant de soumettre. Une guess de ronde obsolete est refusee. Les guesses
+en memoire qui n'ont pas encore produit de proposal sont perdues en cas de crash
+et doivent etre soumises de nouveau. Write peut aussi changer la cible pour
+preparer un autre exemple et annule les guesses en attente de l'ancienne ronde.
+
+## Demonstration 3 : Crash du leader
+
+Lire `leader=...`, puis fermer le terminal de CE noeud ou Ctrl+C dans ce terminal.
+Attendre environ 6 a 10 secondes. Les followers detectent l'absence de heartbeat.
+Ils comparent le dernier tag, y compris PROPOSED : plus grand epoch, puis seq,
+puis plus petit ID en cas d'egalite. Le gagnant rassemble au moins trois journaux,
+preserve les commits, synchronise la queue et termine les proposals selectionnes
+apres nouvelle replication a quorum. Il persiste le nouvel epoch et remet seq a 0.
+Les clients connectes a un follower vivant peuvent refaire `read`, puis `write 40`.
+Un client connecte au noeud tue doit etre relance sur un noeud vivant.
+Relancer le noeud arrete avec le meme Id et DataDir : il reprend comme follower
+et rattrape le journal du nouveau leader.
+
+## Architecture et choix
+
+| Classe | Role |
+| --- | --- |
+| NodeServer | Demarrage gRPC et arret du processus |
+| NodeRuntime | Connexions reutilisees et assemblage des composants |
+| GameServiceImpl | Write/Guess/Read, comme CalculatorServiceImpl |
+| CoordinationServiceImpl | RPC PROPOSE, COMMIT, heartbeat, election, synchronisation |
+| LeaderCoordinator | Numero de transaction, ACK durables, quorum, COMMIT |
+| ElectionManager | Heartbeat 500 ms, timeout 5 s + decalage par ID, reprise |
+| GameEngine | Collecte trois secondes, distance absolue, nouvelle ronde |
+| NodeState | Etat partage protege par synchronized |
+| LogStore | Journal persistant et reprise |
+| ClientApp | Blocking stub et boucle Scanner |
+
+Les threads ordinaires (Thread + Thread.sleep) reprennent le TP Socket : un pour les heartbeats et un pour chaque fenetre de guesses. Pas de pool de threads dans le code applicatif. Les RPC entre noeuds ont un delai de 300 ms ; forwarding 5 s ; client 6 s.
+Une operation locale est serialisee avec un verrou : plusieurs clients ne
+peuvent pas attribuer le meme seq. Les handlers entrants utilisent le verrou
+NodeState et ne gardent pas le verrou d'operation pendant la communication.
+
+Journal UTF-8 append-only : `EPOCH`, `ENTRY` et checkpoints `SNAPSHOT`.
+Chaque ENTRY a epoch, seq, op, value, status, client, request, round ; IDs encodes
+Base64. Un commit ajoute la version COMMITTED du meme tag. SNAPSHOT contient un
+checkpoint Protobuf en Base64, persiste en une ligne complete avant application.
+Un checkpoint ne peut pas enlever un commit. Une derniere ligne incomplete est
+tronquee au redemarrage ; une ligne complete corrompue bloque la reprise.
+`FileChannel.force(true)` precede chaque ACK. Une proposition seule ne modifie
+jamais la cible visible.
+
+Perimetre : modele simplifie du TP, cinq membres fixes, reseau localhost stable,
+pannes par arret/reprise de processus. Ce n'est pas l'implementation complete de
+ZAB ou Raft : pas de votes Raft, pas de garantie generale sur les partitions ou
+les delais arbitraires. Des historiques contradictoires bloquent la reprise.
+Read est local et peut etre en retard sur un follower avant synchronisation.
+
+## Tests et livrables
+
+```powershell
+./scripts/test.ps1
+```
+
+17 tests : 9 de stockage, 6 d'etat, 1 scenario complet avec cinq JVM et 1 test du cycle de vie des processus.
+Le scenario couvre les trois flux, redemarrage, injection controlee d'une queue
+PROPOSED, quorum absent, retry, valeur invalide, ronde obsolete et valeur zero.
+Ports des tests : 18501-18505 ; donnees temporaires isolees des donnees de demo.
+Les sorties de la derniere execution sont dans `target/demo-evidence`. Le test des processus utilise le port 18601 et conserve ses traces dans `target/process-evidence`. Il verifie le refus d'un demarrage en double, un conflit de port, la fermeture concurrente et la liberation du port et du journal.
+
+- `docs/rapport.md` : rapport francais editable.
+- `output/pdf/rapport_zookeeper.pdf` : rapport et captures des traces de tests.
+- `docs/答辩讲解.md` : explication chinoise et phrases francaises de soutenance.
+- `docs/evidence/` : preuves conservees de l'execution validee.
+- `output/TP_ZooKeeper_YuefanLiu.zip` : code, scripts, README, rapport et preuves.

@@ -1,0 +1,69 @@
+Five independent JVMs, actual gRPC results
+
+INITIAL ELECTION
+node=1 role=LEADER leader=1 ready=true target=unset round=0 tag=(0,0)
+node=2 role=FOLLOWER leader=1 ready=true target=unset round=0 tag=(0,0)
+node=3 role=FOLLOWER leader=1 ready=true target=unset round=0 tag=(0,0)
+node=4 role=FOLLOWER leader=1 ready=true target=unset round=0 tag=(0,0)
+node=5 role=FOLLOWER leader=1 ready=true target=unset round=0 tag=(0,0)
+
+1. WRITE 50 via follower 4
+node=1 role=LEADER leader=1 ready=true target=50 round=1 tag=(1,1)
+node=2 role=FOLLOWER leader=1 ready=true target=50 round=1 tag=(1,1)
+node=3 role=FOLLOWER leader=1 ready=true target=50 round=1 tag=(1,1)
+node=4 role=FOLLOWER leader=1 ready=true target=50 round=1 tag=(1,1)
+node=5 role=FOLLOWER leader=1 ready=true target=50 round=1 tag=(1,1)
+
+2. GUESS 30 and 62: closest to 50 is 62
+node=1 role=LEADER leader=1 ready=true target=62 round=2 tag=(1,2)
+node=2 role=FOLLOWER leader=1 ready=true target=62 round=2 tag=(1,2)
+node=3 role=FOLLOWER leader=1 ready=true target=62 round=2 tag=(1,2)
+node=4 role=FOLLOWER leader=1 ready=true target=62 round=2 tag=(1,2)
+node=5 role=FOLLOWER leader=1 ready=true target=62 round=2 tag=(1,2)
+
+3. KILL leader 1: leader 2 elected, target preserved
+node=2 role=LEADER leader=2 ready=true target=62 round=2 tag=(1,2)
+node=3 role=FOLLOWER leader=2 ready=true target=62 round=2 tag=(1,2)
+node=4 role=FOLLOWER leader=2 ready=true target=62 round=2 tag=(1,2)
+node=5 role=FOLLOWER leader=2 ready=true target=62 round=2 tag=(1,2)
+
+WRITE 40 after crash (new epoch, seq=1)
+node=2 role=LEADER leader=2 ready=true target=40 round=3 tag=(2,1)
+node=3 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+node=4 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+node=5 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+
+RESTART node 1: catches up as follower
+node=1 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+node=2 role=LEADER leader=2 ready=true target=40 round=3 tag=(2,1)
+node=3 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+node=4 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+node=5 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+
+FAULT INJECTION: pending 77 on nodes 3/4; target remains 40
+node=1 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+node=3 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+node=4 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+node=5 role=FOLLOWER leader=2 ready=true target=40 round=3 tag=(2,1)
+
+RECOVER pending tail: latest-tag node 3 wins and commits 77
+node=1 role=FOLLOWER leader=3 ready=true target=77 round=4 tag=(2,2)
+node=3 role=LEADER leader=3 ready=true target=77 round=4 tag=(2,2)
+node=4 role=FOLLOWER leader=3 ready=true target=77 round=4 tag=(2,2)
+node=5 role=FOLLOWER leader=3 ready=true target=77 round=4 tag=(2,2)
+
+ONLY 2/5 alive: WRITE 18 is not committed
+node=3 role=LEADER leader=3 ready=false target=77 round=4 tag=(2,2)
+node=4 role=FOLLOWER leader=3 ready=true target=77 round=4 tag=(2,2)
+
+QUORUM restored: recovered state target=18
+node=3 role=LEADER leader=3 ready=true target=18 round=5 tag=(3,1)
+node=4 role=FOLLOWER leader=3 ready=true target=18 round=5 tag=(3,1)
+node=5 role=FOLLOWER leader=3 ready=true target=18 round=5 tag=(3,1)
+
+Boundary value 0 is a valid target
+node=3 role=LEADER leader=3 ready=true target=0 round=6 tag=(4,1)
+node=4 role=FOLLOWER leader=3 ready=true target=0 round=6 tag=(4,1)
+node=5 role=FOLLOWER leader=3 ready=true target=0 round=6 tag=(4,1)
+
+ALL ASSERTIONS PASSED

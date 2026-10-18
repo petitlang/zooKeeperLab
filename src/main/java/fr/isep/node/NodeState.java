@@ -11,6 +11,7 @@ import fr.isep.storage.LogStore;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.List;
 
 /** Shared runtime state: role, leader, epoch, and committed game state. */
 public final class NodeState {
@@ -140,6 +141,27 @@ public final class NodeState {
         LogEntry committed = logStore.commit(tag);
         restoreCommittedState();
         return committed;
+    }
+
+    public synchronized void synchronize(List<LogEntry> entries) throws IOException {
+        ready = false;
+        logStore.synchronize(entries);
+        currentSeq = logStore.getLatestEntry()
+                .filter(entry -> entry.getTag().getEpoch() == currentEpoch)
+                .map(entry -> entry.getTag().getSeq()).orElse(0);
+        restoreCommittedState();
+    }
+
+    public synchronized void pause() {
+        ready = false;
+    }
+
+    /** Sender validation and mutation share the same state lock in the RPC handlers. */
+    public synchronized void requireLeader(int id, int epoch) {
+        if (role != NodeRole.FOLLOWER || leaderId == null || leaderId != id
+                || currentEpoch != epoch) {
+            throw new IllegalArgumentException("Unknown leader or stale epoch.");
+        }
     }
 
     private void restoreCommittedState() {

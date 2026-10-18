@@ -1,0 +1,28 @@
+<!doctype html><html lang="fr"><meta charset="utf-8">
+<title>2. Deux guesses et nouvelle ronde</title><style>
+*{box-sizing:border-box}body{margin:0;background:#fff;color:#172033;
+font-family:Arial,sans-serif;width:980px;padding:24px}h1{font-size:26px;margin:0 0 8px}
+p{font-size:16px;color:#536070;margin:0 0 20px}pre{white-space:pre-wrap;
+font:18px/1.35 Consolas,monospace;border:1px solid #ccd3dc;background:#f5f7fa;
+padding:18px;margin:0}footer{font-size:14px;margin-top:12px;color:#536070}
+</style><h1>2. Deux guesses et nouvelle ronde</h1>
+<p>Execution validee le 13 octobre 2026 - cinq JVM independantes, gRPC localhost.</p>
+<pre>[Node 1] GUESS client=B value=30 round=1
+[Node 1] GUESS client=C value=62 round=1
+[Node 1] WINNER round=1 value=62
+[Node 1] PROPOSE (1,2) GUESS value=62
+[Node 1] COMMIT (1,2) quorum=5/5
+
+2. GUESS 30 and 62: closest to 50 is 62
+node=1 role=LEADER leader=1 ready=true
+    target=62 round=2 tag=(1,2)
+node=2 role=FOLLOWER leader=1 ready=true
+    target=62 round=2 tag=(1,2)
+node=3 role=FOLLOWER leader=1 ready=true
+    target=62 round=2 tag=(1,2)
+node=4 role=FOLLOWER leader=1 ready=true
+    target=62 round=2 tag=(1,2)
+node=5 role=FOLLOWER leader=1 ready=true
+    target=62 round=2 tag=(1,2)</pre>
+<footer>Capture de traces reelles affichees sur une page locale. Sources : scenarios.txt et node-*.log.</footer>
+</html>

@@ -20,16 +20,19 @@ public final class NodeServer implements AutoCloseable {
     private final Server server;
     private final LogStore logStore;
     private final NodeState state;
+    private final NodeRuntime runtime;
+    private boolean closed;
 
     public NodeServer(NodeConfig config) throws IOException {
         this.config = Objects.requireNonNull(config, "config");
         logStore = new LogStore(config.getLogFile());
         try {
             state = new NodeState(config, logStore);
+            runtime = new NodeRuntime(config, state, logStore);
             // Both APIs share one listening port, just as multiple Lab2 services can.
             server = ServerBuilder.forPort(config.getPort())
-                    .addService(new GameServiceImpl())
-                    .addService(new CoordinationServiceImpl())
+                    .addService(new GameServiceImpl(runtime))
+                    .addService(new CoordinationServiceImpl(runtime))
                     .build();
         } catch (RuntimeException | Error e) {
             try {
@@ -58,7 +61,8 @@ public final class NodeServer implements AutoCloseable {
                 + " seq=" + state.getCurrentSeq()
                 + " target=" + (restored.hasTarget() ? restored.getTarget() : "unset")
                 + " round=" + restored.getRoundId() + " pending=" + pending);
-        System.out.println(prefix + "Startup only: RPC handlers and leader election are not implemented yet.");
+        runtime.start();
+        System.out.println(prefix + "Waiting for election and log synchronization...");
     }
 
     public void awaitTermination() throws InterruptedException {
@@ -67,8 +71,14 @@ public final class NodeServer implements AutoCloseable {
 
     /** Stop accepting calls, allow existing calls to finish, then force shutdown. */
     @Override
-    public void close() {
+    public synchronized void close() {
+        // main 的 try-with-resources 和 shutdown hook 可能同时调用，只清理一次。
+        if (closed) {
+            return;
+        }
+        closed = true;
         server.shutdown();
+        runtime.close();
         try {
             if (!server.awaitTermination(5, TimeUnit.SECONDS)) {
                 server.shutdownNow();
