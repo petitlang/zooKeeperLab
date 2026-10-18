@@ -4,7 +4,7 @@ import fr.isep.proto.*;
 import io.grpc.stub.StreamObserver;
 import java.util.Objects;
 
-/** Client RPC adapter; all game rules belong to GameEngine. */
+/** Client-facing RPC handlers. */
 public final class GameServiceImpl extends GameServiceGrpc.GameServiceImplBase {
     private final GameEngine game;
     public GameServiceImpl(GameEngine game) { this.game = Objects.requireNonNull(game); }

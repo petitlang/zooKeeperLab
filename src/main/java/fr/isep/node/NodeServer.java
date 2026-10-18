@@ -2,13 +2,13 @@ package fr.isep.node;
 
 import java.io.IOException;
 
-/** Process entrypoint. Runtime owns composition and resource shutdown. */
+/** Node process entrypoint. */
 public final class NodeServer implements AutoCloseable {
     private final NodeRuntime runtime;
 
     public NodeServer(NodeConfig config) throws IOException { this(config, true); }
 
-    /** Disable background election only for deterministic protocol tests. */
+    /** Allows protocol tests to run without background election. */
     public NodeServer(NodeConfig config, boolean automaticElection) throws IOException {
         runtime = new NodeRuntime(config, automaticElection);
     }
@@ -40,7 +40,6 @@ public final class NodeServer implements AutoCloseable {
                 System.err.println("[Node " + config.getNodeId() + "] Shutting down...");
                 node.close();
             }, "node-" + config.getNodeId() + "-shutdown"));
-            // Keep this node process alive until it is stopped (for example Ctrl+C).
             node.awaitTermination();
         } catch (IOException e) {
             System.err.println("[Node " + config.getNodeId() + "] Startup failed on port "

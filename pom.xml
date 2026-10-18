@@ -14,8 +14,6 @@
         <grpc.version>1.84.2</grpc.version>
         <protobuf.version>3.25.9</protobuf.version>
     </properties>
-
-    <!-- Keep all gRPC modules on the same version. -->
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -29,32 +27,24 @@
     </dependencyManagement>
 
     <dependencies>
-        <!-- HTTP/2 transport used by both servers and clients. -->
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-netty-shaded</artifactId>
             <scope>runtime</scope>
         </dependency>
-
-        <!-- Connect Protobuf messages to gRPC serialization. -->
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-protobuf</artifactId>
         </dependency>
-
-        <!-- Support generated client stubs and server base classes. -->
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-stub</artifactId>
         </dependency>
-
-        <!-- Match the message runtime to the protoc compiler below. -->
         <dependency>
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java</artifactId>
             <version>${protobuf.version}</version>
         </dependency>
-        <!-- Verify durable recovery and concurrent node state changes. -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -65,7 +55,6 @@
 
     <build>
         <extensions>
-            <!-- Select protoc binaries for the current OS and architecture. -->
             <extension>
                 <groupId>kr.motd.maven</groupId>
                 <artifactId>os-maven-plugin</artifactId>
@@ -74,7 +63,6 @@
         </extensions>
 
         <plugins>
-            <!-- Generate messages and gRPC services from src/main/proto. -->
             <plugin>
                 <groupId>org.xolstice.maven.plugins</groupId>
                 <artifactId>protobuf-maven-plugin</artifactId>
@@ -93,8 +81,6 @@
                     </execution>
                 </executions>
             </plugin>
-
-            <!-- Compile handwritten and generated sources for Java 17. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -106,8 +92,6 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.3</version>
             </plugin>
-
-            <!-- Choose a node or client main class on the command line. -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>

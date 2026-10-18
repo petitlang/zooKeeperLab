@@ -6,7 +6,7 @@ import fr.isep.proto.*;
 import io.grpc.StatusRuntimeException;
 import java.util.*;
 
-/** Application rules. Pending guesses are volatile; targets only change through the coordinator. */
+/** Collects two client guesses and submits the winning value. */
 public final class GameEngine {
     private final NodeConfig config;
     private final NodeState state;
@@ -87,7 +87,6 @@ public final class GameEngine {
             if ((winner != null || settling) && prior == null)
                 return reply(RequestStatus.REQUEST_REJECTED, request, "Round is full; retry a collected request or wait for next round.");
             if (settling) return reply(RequestStatus.REQUEST_ACCEPTED, request, "This round is being committed.");
-            // A request ID previously used by Write is rejected above; pending guesses are checked here.
             guesses.putIfAbsent(request.getClientId(), request);
             if (guesses.size() < config.getRequiredGuesses())
                 return reply(RequestStatus.REQUEST_ACCEPTED, request,
@@ -103,7 +102,7 @@ public final class GameEngine {
             System.out.println("[Node " + config.getNodeId() + "] WINNER value=" + selected.getValue()
                     + " round=" + round + " guesses=" + guesses.size());
         }
-        // Never hold the collection monitor while waiting for quorum or another write.
+        // Release the guess lock before replication.
         OperationResponse result;
         try {
             result = coordinator.commitGuess(selected, expectedEpoch);

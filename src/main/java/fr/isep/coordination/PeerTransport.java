@@ -7,7 +7,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.BiFunction;
 
-/** Owns reusable channels and bounded concurrent RPCs; contains no consensus policy. */
+/** Reuses peer channels and applies RPC deadlines. */
 public final class PeerTransport implements AutoCloseable {
     private final NodeConfig config;
     private final Map<Integer, ManagedChannel> channels = new HashMap<>();
@@ -32,7 +32,7 @@ public final class PeerTransport implements AutoCloseable {
         }
     }
 
-    /** A transport error belongs to one peer and never aborts other peer calls. */
+    /** Result or error for one peer call. */
     public record Reply<T>(int nodeId, T value, String error) {}
 
     public <T> List<Reply<T>> callAll(BiFunction<NodeConfig.NodeAddress,

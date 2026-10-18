@@ -6,7 +6,7 @@ import fr.isep.storage.LogStore;
 import java.io.IOException;
 import java.util.*;
 
-/** Reconciles a compatible history and makes it durable on a fixed majority. */
+/** Selects and synchronizes the recovery log. */
 public final class RecoveryManager {
     private final NodeConfig config;
     private final NodeState state;
@@ -33,7 +33,7 @@ public final class RecoveryManager {
                 : snapshot.getEntries(snapshot.getEntriesCount() - 1).getTag();
     }
 
-    /** Pure reconciliation; conflicts fail closed, even if only a proposal conflicts. */
+    /** Merge commit status; reject conflicting entries. */
     static List<LogEntry> reconcile(LogSnapshot winner, List<LogSnapshot> snapshots) {
         List<LogEntry> result = new ArrayList<>(winner.getEntriesList());
         int committedThrough = -1;
@@ -54,7 +54,7 @@ public final class RecoveryManager {
         return List.copyOf(result);
     }
 
-    /** Shares the coordinator's operation monitor, never the state monitor across RPCs. */
+    /** Serialize recovery with writes using the coordinator lock. */
     boolean electAndRecover() throws IOException {
         synchronized (coordinator) {
             if (Thread.currentThread().isInterrupted()) return false;
@@ -85,7 +85,7 @@ public final class RecoveryManager {
             if (!syncMajority(epoch, history)) return false;
             System.out.println("[Node " + config.getNodeId() + "] RECOVERY synchronized entries=" + history.size()
                     + " quorum=3 epoch=" + epoch);
-            // Each pending entry has now been durably copied to a majority under this authority.
+            // The selected log is now durable on a majority.
             for (LogEntry entry : history) {
                 if (entry.getStatus() == LogStatus.PROPOSED) {
                     synchronized (state) {
@@ -123,7 +123,7 @@ public final class RecoveryManager {
         return accepted >= config.getQuorum() && leader(epoch) && !Thread.currentThread().isInterrupted();
     }
 
-    /** Repair unavailable/restarted followers without waiting for another client write. */
+    /** Synchronize lagging followers between writes. */
     void catchUpFollowers() throws IOException {
         synchronized (coordinator) {
             int epoch = state.getCurrentEpoch();

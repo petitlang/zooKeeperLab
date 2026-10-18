@@ -5,7 +5,7 @@ import io.grpc.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-/** Interactive client. Retry preserves the exact request ID, value and original round. */
+/** Command-line client with explicit request retry. */
 public final class ClientApp {
     private ClientApp() {}
 

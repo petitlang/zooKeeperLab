@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Five actual JVMs. The fixture leader exposes deterministic protocol crash boundaries. */
+/** Five-process integration tests, including crashes during replication. */
 class ClusterProcessTest {
     @TempDir Path data;
     private final Map<Integer, Process> processes = new HashMap<>();
@@ -167,7 +167,6 @@ class ClusterProcessTest {
 
     @ParameterizedTest @ValueSource(ints = {1, 2, 3})
     void crashAtProtocolBoundariesPreservesDecisions(int stage) throws Exception {
-        // This real leader runs the production components; only its driver pauses the protocol.
         processes.put(1, launch(1, StagedLeader.class.getName(), "--stage", Integer.toString(stage)));
         channels.put(1, ManagedChannelBuilder.forAddress("127.0.0.1", base + 1).usePlaintext().build());
         for (int id = 2; id <= 5; id++) start(id);
@@ -183,7 +182,7 @@ class ClusterProcessTest {
         record("BOUNDARY stage=" + stage + " recovered=" + expected + " newLeader=" + elected + " resumed=70");
     }
 
-    /** Test-only driver: pause after local proposal, majority proposal, or partial commit. */
+    /** Leader fixture that pauses at each replication stage. */
     public static final class StagedLeader {
         public static void main(String[] args) throws Exception {
             int stage = Integer.parseInt(args[args.length - 1]);

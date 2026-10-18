@@ -5,7 +5,7 @@ import fr.isep.proto.*;
 import java.io.IOException;
 import java.util.concurrent.*;
 
-/** Monotonic heartbeat failure detector for the lab's fixed localhost cluster. */
+/** Sends heartbeats and starts recovery after a timeout. */
 public final class ElectionManager implements AutoCloseable {
     private final NodeConfig config;
     private final NodeState state;
@@ -34,7 +34,7 @@ public final class ElectionManager implements AutoCloseable {
                 config.getHeartbeatInterval().toMillis(), TimeUnit.MILLISECONDS);
     }
 
-    /** Called only after the service has validated and persisted the leader authority. */
+    /** Record contact after validating the leader. */
     void leaderContact() { lastContact = System.nanoTime(); }
 
     private void tick() {
@@ -53,7 +53,6 @@ public final class ElectionManager implements AutoCloseable {
                 if (++ticks % 2 == 0) recovery.catchUpFollowers();
             } else if (System.nanoTime() - lastContact > config.getElectionTimeout().toNanos()
                     + TimeUnit.MILLISECONDS.toNanos(config.getNodeId() * 350L)) {
-                // The lab chooses by latest tag, not by a Raft majority vote.
                 recovery.electAndRecover();
                 lastContact = System.nanoTime();
             }

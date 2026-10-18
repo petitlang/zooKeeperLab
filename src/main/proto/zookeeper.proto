@@ -21,7 +21,7 @@ service CoordinationService {
   rpc Heartbeat(HeartbeatRequest) returns (NodeResponse);
   rpc Forward(ForwardRequest) returns (OperationResponse);
 
-  // Exchange candidates' latest tags; this does not implement Raft voting.
+  // Exchange latest candidate tags.
   rpc Election(ElectionRequest) returns (ElectionResponse);
   rpc AnnounceLeader(LeaderAnnouncement) returns (NodeResponse);
 
@@ -65,7 +65,7 @@ enum RequestStatus {
   REQUEST_UNCERTAIN = 4;
 }
 
-// Required log data: (epoch, seq), op, value, status.
+// Log fields required by the lab.
 // GUESS entries record the winning value, not every queued guess.
 message LogEntry {
   ProposalTag tag = 1;
@@ -82,7 +82,7 @@ message WriteRequest {
   string client_id = 1;
   // Reuse this ID when retrying the same operation.
   string request_id = 2;
-  // Java must require presence and validate the range 0..100.
+  // Required value, range 0..100.
   optional int32 value = 3;
 }
 
@@ -202,8 +202,7 @@ message LogSnapshot {
 message SyncLogRequest {
   int32 leader_id = 1;
   int32 leader_epoch = 2;
-  // Reconciled ordered log. The receiver must validate the sender and entries,
-  // preserve committed history, persist the result, and rebuild game state.
-  // The Java recovery algorithm decides how unresolved proposals are handled.
+  // Ordered recovery log; validate and persist before applying.
+  // Existing commits must be preserved.
   repeated LogEntry entries = 3;
 }

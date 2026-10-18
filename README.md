@@ -1,7 +1,8 @@
 # ZooKeeper-like lab
 
-Java 17, Maven, gRPC and Protocol Buffers. Five independent localhost processes,
-one elected leader, four followers and a fixed quorum of **3/5**.
+Java 17 and gRPC implementation of the lab's distributed number game.
+The cluster has five localhost nodes: one elected leader and four followers.
+Quorum is fixed at 3/5.
 
 ## Build and run
 
@@ -83,7 +84,7 @@ round and last committed tag. Guess progress is maintained by the leader:
 forwarded Guess responses show the leader's progress; follower local Read does
 not reconstruct the leader's volatile collection.
 
-## Encapsulation and concurrency
+## Components and concurrency
 
 | Component | Responsibility |
 | --- | --- |
@@ -99,11 +100,11 @@ not reconstruct the leader's volatile collection.
 | LogStore | Durable records, validation, checkpoints, replay and file locking |
 | ClientApp | Explicit commands, retained request and connection lifecycle |
 
-Only NodeRuntime owns long-lived server, worker, channel and log resources.
-Shutdown is idempotent; partial startup failures release resources. Collections
-are private and snapshots immutable. Writes and recovery share the coordinator's
-operation monitor. State and guess locks are never held while waiting for network
-calls. A settlement checks its captured epoch/round again inside the coordinator.
+NodeRuntime starts and closes the node's server, background worker, peer channels
+and log store. Closing twice is safe; startup errors also release open resources.
+Writes and recovery use the same coordinator lock. State and guess locks are
+released before network calls. Guess settlement checks its original epoch and
+round before creating a proposal.
 
 Peer phases have a shared one-second deadline and run concurrently. Forwarding
 has a five-second deadline; the client uses six seconds. Heartbeats run every
@@ -115,9 +116,8 @@ Unavailable peers and catch-up can lengthen the interval between heartbeats.
 
 Candidates exchange latest tags, including PROPOSED entries, and fetch logs.
 The greatest `(epoch, seq)` wins; equal tags favor the smallest node ID. At least
-three responses are required. The winner checks compatible prefix histories and
-merges observed commit knowledge. Conflicting histories stop recovery with a
-clear error instead of silently choosing a value.
+three responses are required. The winner checks that the logs have compatible prefixes and preserves observed
+commits. Conflicting histories stop recovery.
 
 The next epoch exceeds all observed/current epochs and is persisted before use.
 The elected node stays unready while its selected history is durably synchronized
@@ -163,16 +163,18 @@ manual-bootstrap protocol scenarios without concurrent recovery.
 
 `ClusterProcessTest` launches five independent JVMs, uses forced process termination,
 and covers all three demonstrations, old-node rejoin and absent-quorum retry.
-A test-only leader driver also pauses production components at three deterministic
-boundaries: local PROPOSED only, proposal durable on 3/5 before COMMIT, and COMMIT
-stored on leader plus one follower. The parent forcibly kills it, then checks
-re-election and continuation. There are no production crash-injection switches.
+A leader fixture pauses at three stages: local PROPOSED only, proposal durable on
+3/5 before COMMIT, and COMMIT stored on the leader plus one follower. The test
+kills that JVM and checks recovery. The fixture is in the test sources.
 Tests use temporary data and reserved port ranges, separate from demonstration logs.
 
 JUnit results: `target/surefire-reports/`. Live process traces and scenario evidence:
-`target/demo-evidence/run-*/`. Retained evidence and the report are under `docs/`.
+`target/demo-evidence/run-*/`. The report and saved traces are under `docs/`.
 
-## Model limits
+Chinese notes: [使用方法](docs/使用方法.md) and
+[轮次与三个演示场景讲解](docs/轮次与三个演示场景讲解.md).
+
+## Limits
 
 This is the lab's simplified fixed-five-node protocol on a stable localhost
 network, tested for process stop/restart. It is not complete ZAB or Raft and does

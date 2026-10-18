@@ -8,7 +8,7 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Composition root and sole owner of each node's long-lived resources. */
+/** Creates node components and closes their resources. */
 public final class NodeRuntime implements AutoCloseable {
     private final NodeConfig config;
     private final boolean automatic;
