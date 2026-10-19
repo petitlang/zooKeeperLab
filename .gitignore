@@ -42,3 +42,16 @@ build/
 ### Local runtime output (not for GitHub) ###
 /data-supplement-*/
 /tmp/
+
+### Archify diagram artifacts (local only, never commit) ###
+.archify/
+**/.archify/
+*.archify.json
+*.archify.md
+*.delivery.json
+*.finalize.json
+*.finalize-summary.json
+*.browser-check.json
+*.visual-check.json
+*.visual-check.html
+*.visual-check.*.png
